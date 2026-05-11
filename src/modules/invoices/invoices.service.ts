@@ -80,6 +80,116 @@ export class InvoicesService {
 
     // Create invoice inside a transaction
     return this.prisma.$transaction(async (tx) => {
+      // Automatically resolve account IDs if not explicitly passed
+      let recvAccId = dto.receivableAccountId;
+      let revAccId = dto.revenueAccountId;
+      let taxAccId = dto.taxAccountId;
+
+      if (!recvAccId) {
+        const acc = await tx.account.findFirst({
+          where: { companyId, OR: [{ subType: 'RECEIVABLE' }, { code: '1100' }] },
+        });
+        if (acc) recvAccId = acc.id;
+      }
+      if (!revAccId) {
+        const acc = await tx.account.findFirst({
+          where: { companyId, OR: [{ subType: 'SALES' }, { code: '4010' }] },
+        });
+        if (acc) revAccId = acc.id;
+      }
+      if (!taxAccId && totalTax.greaterThan(0)) {
+        const acc = await tx.account.findFirst({
+          where: { companyId, OR: [{ subType: 'TAX' }, { code: '2200' }] },
+        });
+        if (acc) taxAccId = acc.id;
+      }
+
+      // Accounting-safe validation
+      if (!recvAccId) {
+        throw new BadRequestException(
+          'Accounts Receivable account not found. Please create or seed your Chart of Accounts first.',
+        );
+      }
+      if (!revAccId) {
+        throw new BadRequestException(
+          'Sales Revenue account not found. Please create or seed your Chart of Accounts first.',
+        );
+      }
+      if (totalTax.greaterThan(0) && !taxAccId) {
+        throw new BadRequestException(
+          'Sales Tax Payable account not found. Please create or seed your Chart of Accounts first.',
+        );
+      }
+
+      // 1. Create balanced journal lines
+      const journalLines: any[] = [];
+      const netRevenue = subTotal.minus(totalDiscount);
+
+      // Debit: Accounts Receivable (full amount customer owes)
+      journalLines.push({
+        accountId: recvAccId,
+        description: `Invoice ${invoiceNumber} — ${customer.name}`,
+        debit: totalAmount,
+        credit: new Decimal(0),
+      });
+
+      // Credit: Sales Revenue (Net of discounts)
+      journalLines.push({
+        accountId: revAccId,
+        description: `Revenue — Invoice ${invoiceNumber}`,
+        debit: new Decimal(0),
+        credit: netRevenue,
+      });
+
+      // Credit: Tax Payable (if tax exists)
+      if (totalTax.greaterThan(0) && taxAccId) {
+        journalLines.push({
+          accountId: taxAccId,
+          description: `Tax — Invoice ${invoiceNumber}`,
+          debit: new Decimal(0),
+          credit: totalTax,
+        });
+      }
+
+      // Create the posted Journal Entry
+      const journalEntry = await tx.journalEntry.create({
+        data: {
+          companyId,
+          date: dto.issueDate ? new Date(dto.issueDate) : new Date(),
+          reference: `INV-${invoiceNumber}`,
+          description: `Sales Invoice ${invoiceNumber} — ${customer.name}`,
+          status: 'POSTED',
+          lines: { create: journalLines },
+        },
+      });
+
+      // 2. Update accounts ledger balances
+      for (const line of journalLines) {
+        const account = await tx.account.findUnique({
+          where: { id: line.accountId },
+          select: { type: true, balance: true },
+        });
+        if (account) {
+          let delta: Decimal;
+          if (account.type === 'ASSET' || account.type === 'EXPENSE') {
+            delta = new Decimal(line.debit).minus(new Decimal(line.credit));
+          } else {
+            delta = new Decimal(line.credit).minus(new Decimal(line.debit));
+          }
+          await tx.account.update({
+            where: { id: line.accountId },
+            data: { balance: new Decimal(account.balance).plus(delta) },
+          });
+        }
+      }
+
+      // 3. Update customer balance (increase receivables)
+      await tx.customer.update({
+        where: { id: customerId },
+        data: { balance: new Decimal(customer.balance).plus(totalAmount) },
+      });
+
+      // 4. Create the Invoice with linked journal entry
       const invoice = await tx.invoice.create({
         data: {
           companyId,
@@ -92,8 +202,9 @@ export class InvoicesService {
           taxAmount: totalTax,
           totalAmount,
           paidAmount: new Decimal(0),
-          status: 'DRAFT',
+          status: 'SENT', // Marks automatically as SENT instead of DRAFT because journal entry is posted!
           notes: notes || null,
+          journalEntryId: journalEntry.id,
           items: {
             create: calculatedItems.map((ci) => ({
               description: ci.description,
@@ -115,6 +226,7 @@ export class InvoicesService {
 
       return {
         ...invoice,
+        journalEntryId: journalEntry.id,
         financials: {
           subTotal: subTotal.toFixed(2),
           totalDiscount: totalDiscount.toFixed(2),
