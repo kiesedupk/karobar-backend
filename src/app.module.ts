@@ -12,12 +12,13 @@ import { ReportsModule } from './modules/reports/reports.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
 import { TenantMiddleware } from './common/tenant-context/tenant.middleware';
+import { ExpensesModule } from './modules/expenses/expenses.module';
 
 @Module({
   imports: [
     PrismaModule, AuthModule, UsersModule, CompaniesModule,
     AccountingModule, JournalModule, InvoicesModule, ReportsModule,
-    CustomersModule, VendorsModule,
+    CustomersModule, VendorsModule, ExpensesModule,
   ],
   controllers: [AppController],
   providers: [AppService],

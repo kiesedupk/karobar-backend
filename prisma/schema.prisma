@@ -29,6 +29,7 @@ model Company {
   customers      Customer[]
   vendors        Vendor[]
   invoices       Invoice[]
+  expenses       Expense[]
 }
 
 model User {
@@ -173,6 +174,7 @@ model Vendor {
   updatedAt DateTime @updatedAt
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expenses Expense[]
 
   @@index([companyId])
 }
@@ -248,3 +250,29 @@ model Payment {
   @@index([invoiceId])
 }
 
+// ==========================================
+// 5. Expenses & Bills Module
+// ==========================================
+
+model Expense {
+  id               String   @id @default(uuid())
+  companyId        String
+  vendorId         String?  // Optional, if paid to a specific vendor
+  journalEntryId   String?  // Link to auto-posted journal entry
+  expenseAccountId String   // The GL Account for the expense (Debit)
+  paymentAccountId String   // The GL Account for the payment (Credit)
+  referenceNumber  String?  // Receipt or Bill number
+  date             DateTime @default(now())
+  amount           Decimal
+  description      String
+  status           String   @default("PAID") // PAID, PENDING, CANCELLED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor  Vendor? @relation(fields: [vendorId], references: [id])
+
+  @@index([companyId])
+  @@index([vendorId])
+  @@index([status])
+}
