@@ -1,0 +1,773 @@
+import {
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { Decimal } from '@prisma/client/runtime/library';
+
+// =====================================================
+// Helper: Date filter for journal lines (POSTED only)
+// =====================================================
+interface DateFilter {
+  startDate?: string;
+  endDate?: string;
+}
+
+interface AccountBalance {
+  accountId: string;
+  accountCode: string;
+  accountName: string;
+  accountType: string;
+  subType: string | null;
+  totalDebits: Decimal;
+  totalCredits: Decimal;
+  balance: Decimal;
+}
+
+@Injectable()
+export class ReportsService {
+  constructor(private prisma: PrismaService) {}
+
+  // ================================================================
+  // SHARED: Compute all account balances from journal lines
+  // ================================================================
+  private async computeAccountBalances(
+    companyId: string,
+    dateFilter?: DateFilter,
+  ): Promise<AccountBalance[]> {
+    const accounts = await this.prisma.account.findMany({
+      where: { companyId, isActive: true },
+      orderBy: { code: 'asc' },
+    });
+
+    // Build journal line date filter
+    const journalWhere: any = {
+      journalEntry: {
+        companyId,
+        status: 'POSTED',
+      },
+    };
+
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      journalWhere.journalEntry.date = {};
+      if (dateFilter.startDate) {
+        journalWhere.journalEntry.date.gte = new Date(dateFilter.startDate);
+      }
+      if (dateFilter.endDate) {
+        journalWhere.journalEntry.date.lte = new Date(dateFilter.endDate);
+      }
+    }
+
+    const results: AccountBalance[] = [];
+
+    for (const account of accounts) {
+      const agg = await this.prisma.journalLine.aggregate({
+        where: {
+          accountId: account.id,
+          ...journalWhere,
+        },
+        _sum: { debit: true, credit: true },
+      });
+
+      const totalDebits = new Decimal(agg._sum.debit || 0);
+      const totalCredits = new Decimal(agg._sum.credit || 0);
+
+      // Skip zero-activity accounts
+      if (totalDebits.isZero() && totalCredits.isZero()) continue;
+
+      // Normal balance rule
+      let balance: Decimal;
+      if (account.type === 'ASSET' || account.type === 'EXPENSE') {
+        balance = totalDebits.minus(totalCredits);
+      } else {
+        balance = totalCredits.minus(totalDebits);
+      }
+
+      results.push({
+        accountId: account.id,
+        accountCode: account.code,
+        accountName: account.name,
+        accountType: account.type,
+        subType: account.subType,
+        totalDebits,
+        totalCredits,
+        balance,
+      });
+    }
+
+    return results;
+  }
+
+  // ================================================================
+  // 1. TRIAL BALANCE
+  // ================================================================
+  async getTrialBalance(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const balances = await this.computeAccountBalances(companyId, dateFilter);
+
+    let totalDebitBalances = new Decimal(0);
+    let totalCreditBalances = new Decimal(0);
+
+    const rows = balances.map((b) => {
+      let debitBalance = new Decimal(0);
+      let creditBalance = new Decimal(0);
+
+      if (b.accountType === 'ASSET' || b.accountType === 'EXPENSE') {
+        if (b.balance.greaterThanOrEqualTo(0)) {
+          debitBalance = b.balance;
+        } else {
+          creditBalance = b.balance.abs();
+        }
+      } else {
+        if (b.balance.greaterThanOrEqualTo(0)) {
+          creditBalance = b.balance;
+        } else {
+          debitBalance = b.balance.abs();
+        }
+      }
+
+      totalDebitBalances = totalDebitBalances.plus(debitBalance);
+      totalCreditBalances = totalCreditBalances.plus(creditBalance);
+
+      return {
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        accountType: b.accountType,
+        totalDebits: b.totalDebits.toFixed(2),
+        totalCredits: b.totalCredits.toFixed(2),
+        debitBalance: debitBalance.toFixed(2),
+        creditBalance: creditBalance.toFixed(2),
+      };
+    });
+
+    return {
+      reportName: 'Trial Balance',
+      companyId,
+      dateRange: {
+        from: dateFilter?.startDate || 'All Time',
+        to: dateFilter?.endDate || 'Present',
+      },
+      generatedAt: new Date().toISOString(),
+      rows,
+      totals: {
+        totalDebitBalances: totalDebitBalances.toFixed(2),
+        totalCreditBalances: totalCreditBalances.toFixed(2),
+        isBalanced: totalDebitBalances.equals(totalCreditBalances),
+        difference: totalDebitBalances.minus(totalCreditBalances).abs().toFixed(2),
+      },
+    };
+  }
+
+  // ================================================================
+  // 2. PROFIT & LOSS (Income Statement)
+  // ================================================================
+  async getProfitAndLoss(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const balances = await this.computeAccountBalances(companyId, dateFilter);
+
+    // --- REVENUE section ---
+    const revenueAccounts = balances
+      .filter((b) => b.accountType === 'REVENUE')
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const totalRevenue = balances
+      .filter((b) => b.accountType === 'REVENUE')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    // --- EXPENSE section ---
+    // Separate COGS from operating expenses
+    const cogsAccounts = balances
+      .filter((b) => b.accountType === 'EXPENSE' && b.subType === 'COGS')
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const totalCOGS = balances
+      .filter((b) => b.accountType === 'EXPENSE' && b.subType === 'COGS')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    const grossProfit = totalRevenue.minus(totalCOGS);
+
+    const operatingExpenses = balances
+      .filter((b) => b.accountType === 'EXPENSE' && b.subType !== 'COGS')
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const totalOperatingExpenses = balances
+      .filter((b) => b.accountType === 'EXPENSE' && b.subType !== 'COGS')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    const totalExpenses = totalCOGS.plus(totalOperatingExpenses);
+    const netIncome = totalRevenue.minus(totalExpenses);
+
+    return {
+      reportName: 'Profit & Loss Statement',
+      companyId,
+      dateRange: {
+        from: dateFilter?.startDate || 'All Time',
+        to: dateFilter?.endDate || 'Present',
+      },
+      generatedAt: new Date().toISOString(),
+
+      // Revenue section
+      revenue: {
+        accounts: revenueAccounts,
+        totalRevenue: totalRevenue.toFixed(2),
+      },
+
+      // Cost of Goods Sold
+      costOfGoodsSold: {
+        accounts: cogsAccounts,
+        totalCOGS: totalCOGS.toFixed(2),
+      },
+
+      grossProfit: grossProfit.toFixed(2),
+
+      // Operating Expenses
+      operatingExpenses: {
+        accounts: operatingExpenses,
+        totalOperatingExpenses: totalOperatingExpenses.toFixed(2),
+      },
+
+      // Summary
+      summary: {
+        totalRevenue: totalRevenue.toFixed(2),
+        totalExpenses: totalExpenses.toFixed(2),
+        netIncome: netIncome.toFixed(2),
+        isProfit: netIncome.greaterThan(0),
+        profitMargin: totalRevenue.isZero()
+          ? '0.00'
+          : netIncome.div(totalRevenue).mul(100).toFixed(2),
+      },
+    };
+  }
+
+  // ================================================================
+  // 3. BALANCE SHEET
+  // ================================================================
+  async getBalanceSheet(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const balances = await this.computeAccountBalances(companyId, dateFilter);
+
+    // --- ASSETS ---
+    const currentAssets = balances
+      .filter(
+        (b) =>
+          b.accountType === 'ASSET' &&
+          b.subType !== 'FIXED' &&
+          b.subType !== 'CONTRA' &&
+          b.subType !== 'HEADER',
+      )
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const fixedAssets = balances
+      .filter(
+        (b) =>
+          b.accountType === 'ASSET' &&
+          (b.subType === 'FIXED' || b.subType === 'CONTRA'),
+      )
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const totalCurrentAssets = balances
+      .filter(
+        (b) =>
+          b.accountType === 'ASSET' &&
+          b.subType !== 'FIXED' &&
+          b.subType !== 'CONTRA' &&
+          b.subType !== 'HEADER',
+      )
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    const totalFixedAssets = balances
+      .filter(
+        (b) =>
+          b.accountType === 'ASSET' &&
+          (b.subType === 'FIXED' || b.subType === 'CONTRA'),
+      )
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    const totalAssets = totalCurrentAssets.plus(totalFixedAssets);
+
+    // --- LIABILITIES ---
+    const currentLiabilities = balances
+      .filter(
+        (b) =>
+          b.accountType === 'LIABILITY' &&
+          b.subType !== 'LOAN' &&
+          b.subType !== 'HEADER',
+      )
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const longTermLiabilities = balances
+      .filter(
+        (b) => b.accountType === 'LIABILITY' && b.subType === 'LOAN',
+      )
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const totalCurrentLiabilities = balances
+      .filter(
+        (b) =>
+          b.accountType === 'LIABILITY' &&
+          b.subType !== 'LOAN' &&
+          b.subType !== 'HEADER',
+      )
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    const totalLongTermLiabilities = balances
+      .filter((b) => b.accountType === 'LIABILITY' && b.subType === 'LOAN')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    const totalLiabilities = totalCurrentLiabilities.plus(totalLongTermLiabilities);
+
+    // --- EQUITY ---
+    const equityAccounts = balances
+      .filter((b) => b.accountType === 'EQUITY' && b.subType !== 'HEADER')
+      .map((b) => ({
+        accountCode: b.accountCode,
+        accountName: b.accountName,
+        subType: b.subType,
+        amount: b.balance.toFixed(2),
+      }));
+
+    const totalEquity = balances
+      .filter((b) => b.accountType === 'EQUITY' && b.subType !== 'HEADER')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+
+    // Net Income (Revenue - Expenses) flows into Equity
+    const revenueTotal = balances
+      .filter((b) => b.accountType === 'REVENUE')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+    const expenseTotal = balances
+      .filter((b) => b.accountType === 'EXPENSE')
+      .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
+    const netIncome = revenueTotal.minus(expenseTotal);
+
+    const totalEquityWithNetIncome = totalEquity.plus(netIncome);
+    const totalLiabilitiesAndEquity = totalLiabilities.plus(totalEquityWithNetIncome);
+
+    return {
+      reportName: 'Balance Sheet',
+      companyId,
+      asOfDate: dateFilter?.endDate || new Date().toISOString().split('T')[0],
+      generatedAt: new Date().toISOString(),
+
+      assets: {
+        currentAssets: {
+          accounts: currentAssets,
+          total: totalCurrentAssets.toFixed(2),
+        },
+        fixedAssets: {
+          accounts: fixedAssets,
+          total: totalFixedAssets.toFixed(2),
+        },
+        totalAssets: totalAssets.toFixed(2),
+      },
+
+      liabilities: {
+        currentLiabilities: {
+          accounts: currentLiabilities,
+          total: totalCurrentLiabilities.toFixed(2),
+        },
+        longTermLiabilities: {
+          accounts: longTermLiabilities,
+          total: totalLongTermLiabilities.toFixed(2),
+        },
+        totalLiabilities: totalLiabilities.toFixed(2),
+      },
+
+      equity: {
+        accounts: equityAccounts,
+        netIncome: netIncome.toFixed(2),
+        totalEquity: totalEquityWithNetIncome.toFixed(2),
+      },
+
+      totalLiabilitiesAndEquity: totalLiabilitiesAndEquity.toFixed(2),
+
+      // The Accounting Equation: Assets = Liabilities + Equity
+      accountingEquation: {
+        assets: totalAssets.toFixed(2),
+        liabilitiesAndEquity: totalLiabilitiesAndEquity.toFixed(2),
+        isBalanced: totalAssets.equals(totalLiabilitiesAndEquity),
+        difference: totalAssets.minus(totalLiabilitiesAndEquity).abs().toFixed(2),
+      },
+    };
+  }
+
+  // ================================================================
+  // 4. CASH FLOW STATEMENT
+  // ================================================================
+  async getCashFlowStatement(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+
+    // Build date filter for journal entries
+    const dateWhere: any = {};
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      dateWhere.date = {};
+      if (dateFilter.startDate) dateWhere.date.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) dateWhere.date.lte = new Date(dateFilter.endDate);
+    }
+
+    // Get all CASH and BANK accounts
+    const cashBankAccounts = await this.prisma.account.findMany({
+      where: {
+        companyId,
+        isActive: true,
+        type: 'ASSET',
+        subType: { in: ['CASH', 'BANK'] },
+      },
+    });
+
+    const cashBankIds = cashBankAccounts.map((a) => a.id);
+
+    // --- OPERATING ACTIVITIES ---
+    // Revenue and Expense account movements (excluding asset purchases)
+    const revenueExpenseAccounts = await this.prisma.account.findMany({
+      where: {
+        companyId,
+        isActive: true,
+        type: { in: ['REVENUE', 'EXPENSE'] },
+      },
+    });
+
+    let operatingCashIn = new Decimal(0);
+    let operatingCashOut = new Decimal(0);
+    const operatingDetails: any[] = [];
+
+    for (const account of revenueExpenseAccounts) {
+      const agg = await this.prisma.journalLine.aggregate({
+        where: {
+          accountId: account.id,
+          journalEntry: { companyId, status: 'POSTED', ...dateWhere },
+        },
+        _sum: { debit: true, credit: true },
+      });
+
+      const debits = new Decimal(agg._sum.debit || 0);
+      const credits = new Decimal(agg._sum.credit || 0);
+
+      if (debits.isZero() && credits.isZero()) continue;
+
+      if (account.type === 'REVENUE') {
+        operatingCashIn = operatingCashIn.plus(credits.minus(debits));
+        operatingDetails.push({
+          accountCode: account.code,
+          accountName: account.name,
+          type: 'INFLOW',
+          amount: credits.minus(debits).toFixed(2),
+        });
+      } else {
+        operatingCashOut = operatingCashOut.plus(debits.minus(credits));
+        operatingDetails.push({
+          accountCode: account.code,
+          accountName: account.name,
+          type: 'OUTFLOW',
+          amount: debits.minus(credits).toFixed(2),
+        });
+      }
+    }
+
+    const netOperating = operatingCashIn.minus(operatingCashOut);
+
+    // --- INVESTING ACTIVITIES ---
+    // Fixed asset movements
+    const fixedAssetAccounts = await this.prisma.account.findMany({
+      where: {
+        companyId,
+        isActive: true,
+        type: 'ASSET',
+        subType: { in: ['FIXED', 'CONTRA'] },
+      },
+    });
+
+    let investingAmount = new Decimal(0);
+    const investingDetails: any[] = [];
+
+    for (const account of fixedAssetAccounts) {
+      const agg = await this.prisma.journalLine.aggregate({
+        where: {
+          accountId: account.id,
+          journalEntry: { companyId, status: 'POSTED', ...dateWhere },
+        },
+        _sum: { debit: true, credit: true },
+      });
+
+      const debits = new Decimal(agg._sum.debit || 0);
+      const credits = new Decimal(agg._sum.credit || 0);
+      if (debits.isZero() && credits.isZero()) continue;
+
+      const net = debits.minus(credits);
+      investingAmount = investingAmount.plus(net);
+
+      investingDetails.push({
+        accountCode: account.code,
+        accountName: account.name,
+        type: net.greaterThan(0) ? 'PURCHASE' : 'SALE',
+        amount: net.toFixed(2),
+      });
+    }
+
+    const netInvesting = investingAmount.negated(); // Purchases are outflows
+
+    // --- FINANCING ACTIVITIES ---
+    // Equity and Loan movements
+    const financingAccounts = await this.prisma.account.findMany({
+      where: {
+        companyId,
+        isActive: true,
+        type: { in: ['EQUITY', 'LIABILITY'] },
+        subType: { in: ['CAPITAL', 'DRAWINGS', 'RETAINED', 'LOAN'] },
+      },
+    });
+
+    let financingAmount = new Decimal(0);
+    const financingDetails: any[] = [];
+
+    for (const account of financingAccounts) {
+      const agg = await this.prisma.journalLine.aggregate({
+        where: {
+          accountId: account.id,
+          journalEntry: { companyId, status: 'POSTED', ...dateWhere },
+        },
+        _sum: { debit: true, credit: true },
+      });
+
+      const debits = new Decimal(agg._sum.debit || 0);
+      const credits = new Decimal(agg._sum.credit || 0);
+      if (debits.isZero() && credits.isZero()) continue;
+
+      let net: Decimal;
+      if (account.subType === 'DRAWINGS') {
+        net = debits.minus(credits).negated(); // Drawings are outflows
+      } else {
+        net = credits.minus(debits); // Capital/Loans are inflows
+      }
+
+      financingAmount = financingAmount.plus(net);
+
+      financingDetails.push({
+        accountCode: account.code,
+        accountName: account.name,
+        subType: account.subType,
+        type: net.greaterThan(0) ? 'INFLOW' : 'OUTFLOW',
+        amount: net.toFixed(2),
+      });
+    }
+
+    const netFinancing = financingAmount;
+
+    // --- CASH POSITION ---
+    const netCashChange = netOperating.plus(netInvesting).plus(netFinancing);
+
+    // Get opening and closing cash balances
+    let openingCashBalance = new Decimal(0);
+    let closingCashBalance = new Decimal(0);
+
+    for (const account of cashBankAccounts) {
+      // Opening = all transactions BEFORE startDate
+      if (dateFilter?.startDate) {
+        const openingAgg = await this.prisma.journalLine.aggregate({
+          where: {
+            accountId: account.id,
+            journalEntry: {
+              companyId,
+              status: 'POSTED',
+              date: { lt: new Date(dateFilter.startDate) },
+            },
+          },
+          _sum: { debit: true, credit: true },
+        });
+        const d = new Decimal(openingAgg._sum.debit || 0);
+        const c = new Decimal(openingAgg._sum.credit || 0);
+        openingCashBalance = openingCashBalance.plus(d.minus(c));
+      }
+
+      // Closing = all transactions up to endDate (or all time)
+      const closingWhere: any = {
+        accountId: account.id,
+        journalEntry: { companyId, status: 'POSTED' },
+      };
+      if (dateFilter?.endDate) {
+        closingWhere.journalEntry.date = { lte: new Date(dateFilter.endDate) };
+      }
+
+      const closingAgg = await this.prisma.journalLine.aggregate({
+        where: closingWhere,
+        _sum: { debit: true, credit: true },
+      });
+      const d = new Decimal(closingAgg._sum.debit || 0);
+      const c = new Decimal(closingAgg._sum.credit || 0);
+      closingCashBalance = closingCashBalance.plus(d.minus(c));
+    }
+
+    return {
+      reportName: 'Cash Flow Statement',
+      companyId,
+      dateRange: {
+        from: dateFilter?.startDate || 'All Time',
+        to: dateFilter?.endDate || 'Present',
+      },
+      generatedAt: new Date().toISOString(),
+
+      operatingActivities: {
+        details: operatingDetails,
+        cashIn: operatingCashIn.toFixed(2),
+        cashOut: operatingCashOut.toFixed(2),
+        netOperatingCashFlow: netOperating.toFixed(2),
+      },
+
+      investingActivities: {
+        details: investingDetails,
+        netInvestingCashFlow: netInvesting.toFixed(2),
+      },
+
+      financingActivities: {
+        details: financingDetails,
+        netFinancingCashFlow: netFinancing.toFixed(2),
+      },
+
+      summary: {
+        netCashChange: netCashChange.toFixed(2),
+        openingCashBalance: openingCashBalance.toFixed(2),
+        closingCashBalance: closingCashBalance.toFixed(2),
+      },
+    };
+  }
+
+  // ================================================================
+  // 5. ACCOUNT LEDGER (detailed transactions for one account)
+  // ================================================================
+  async getAccountLedger(
+    companyId: string,
+    accountId: string,
+    dateFilter?: DateFilter,
+  ) {
+    await this.validateCompany(companyId);
+
+    const account = await this.prisma.account.findUnique({
+      where: { id: accountId },
+    });
+
+    if (!account) throw new NotFoundException('Account not found');
+    if (account.companyId !== companyId) {
+      throw new NotFoundException('Account does not belong to this company');
+    }
+
+    const where: any = {
+      accountId,
+      journalEntry: { companyId, status: 'POSTED' },
+    };
+
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.journalEntry.date = {};
+      if (dateFilter.startDate) where.journalEntry.date.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.journalEntry.date.lte = new Date(dateFilter.endDate);
+    }
+
+    const lines = await this.prisma.journalLine.findMany({
+      where,
+      include: {
+        journalEntry: {
+          select: { id: true, date: true, reference: true, description: true },
+        },
+      },
+      orderBy: { journalEntry: { date: 'asc' } },
+    });
+
+    // Compute running balance
+    let runningBalance = new Decimal(0);
+    const ledgerEntries = lines.map((line) => {
+      const debit = new Decimal(line.debit);
+      const credit = new Decimal(line.credit);
+
+      if (account.type === 'ASSET' || account.type === 'EXPENSE') {
+        runningBalance = runningBalance.plus(debit).minus(credit);
+      } else {
+        runningBalance = runningBalance.plus(credit).minus(debit);
+      }
+
+      return {
+        date: line.journalEntry.date,
+        reference: line.journalEntry.reference,
+        description: line.description || line.journalEntry.description,
+        debit: debit.toFixed(2),
+        credit: credit.toFixed(2),
+        balance: runningBalance.toFixed(2),
+        journalEntryId: line.journalEntry.id,
+      };
+    });
+
+    // Totals
+    const totalDebits = lines.reduce(
+      (sum, l) => sum.plus(new Decimal(l.debit)),
+      new Decimal(0),
+    );
+    const totalCredits = lines.reduce(
+      (sum, l) => sum.plus(new Decimal(l.credit)),
+      new Decimal(0),
+    );
+
+    return {
+      reportName: 'Account Ledger',
+      companyId,
+      account: {
+        id: account.id,
+        code: account.code,
+        name: account.name,
+        type: account.type,
+      },
+      dateRange: {
+        from: dateFilter?.startDate || 'All Time',
+        to: dateFilter?.endDate || 'Present',
+      },
+      generatedAt: new Date().toISOString(),
+      entries: ledgerEntries,
+      totals: {
+        totalDebits: totalDebits.toFixed(2),
+        totalCredits: totalCredits.toFixed(2),
+        closingBalance: runningBalance.toFixed(2),
+        transactionCount: lines.length,
+      },
+    };
+  }
+
+  // ================================================================
+  // PRIVATE HELPERS
+  // ================================================================
+  private async validateCompany(companyId: string) {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) throw new NotFoundException('Company not found');
+    return company;
+  }
+}

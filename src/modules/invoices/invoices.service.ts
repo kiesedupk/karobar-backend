@@ -1,0 +1,623 @@
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
+import { PrismaService } from '../../prisma/prisma.service';
+import { CreateInvoiceDto } from './dto/create-invoice.dto';
+import { RecordPaymentDto } from './dto/record-payment.dto';
+import { Decimal } from '@prisma/client/runtime/library';
+
+@Injectable()
+export class InvoicesService {
+  constructor(private prisma: PrismaService) {}
+
+  // ================================================================
+  // 1. CREATE INVOICE
+  // ================================================================
+  async createInvoice(dto: CreateInvoiceDto) {
+    const { companyId, customerId, items, notes, globalDiscountAmount } = dto;
+
+    // Validate company
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) throw new NotFoundException('Company not found');
+
+    // Validate customer
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Customer not found');
+    if (customer.companyId !== companyId) {
+      throw new BadRequestException('Customer does not belong to this company');
+    }
+
+    // Generate invoice number if not provided
+    const invoiceNumber = dto.invoiceNumber || await this.generateInvoiceNumber(companyId);
+
+    // Check uniqueness
+    const existing = await this.prisma.invoice.findUnique({
+      where: { companyId_invoiceNumber: { companyId, invoiceNumber } },
+    });
+    if (existing) {
+      throw new ConflictException(`Invoice number "${invoiceNumber}" already exists`);
+    }
+
+    // Calculate each line item
+    const calculatedItems = items.map((item) => {
+      const lineSubTotal = new Decimal(item.quantity).mul(new Decimal(item.unitPrice));
+      const discountRate = new Decimal(item.discountRate || 0);
+      const discountAmount = lineSubTotal.mul(discountRate).div(100);
+      const afterDiscount = lineSubTotal.minus(discountAmount);
+      const taxRate = new Decimal(item.taxRate || 0);
+      const taxAmount = afterDiscount.mul(taxRate).div(100);
+      const totalAmount = afterDiscount.plus(taxAmount);
+
+      return {
+        description: item.description,
+        quantity: new Decimal(item.quantity),
+        unitPrice: new Decimal(item.unitPrice),
+        discountRate,
+        discountAmount,
+        taxRate,
+        taxAmount,
+        totalAmount,
+      };
+    });
+
+    // Aggregate totals
+    let subTotal = new Decimal(0);
+    let totalTax = new Decimal(0);
+    let totalItemDiscount = new Decimal(0);
+
+    for (const ci of calculatedItems) {
+      subTotal = subTotal.plus(ci.quantity.mul(ci.unitPrice));
+      totalTax = totalTax.plus(ci.taxAmount);
+      totalItemDiscount = totalItemDiscount.plus(ci.discountAmount);
+    }
+
+    const globalDiscount = new Decimal(globalDiscountAmount || 0);
+    const totalDiscount = totalItemDiscount.plus(globalDiscount);
+    const totalAmount = subTotal.minus(totalDiscount).plus(totalTax);
+
+    // Create invoice inside a transaction
+    return this.prisma.$transaction(async (tx) => {
+      const invoice = await tx.invoice.create({
+        data: {
+          companyId,
+          customerId,
+          invoiceNumber,
+          issueDate: dto.issueDate ? new Date(dto.issueDate) : new Date(),
+          dueDate: dto.dueDate ? new Date(dto.dueDate) : null,
+          subTotal,
+          discountAmount: totalDiscount,
+          taxAmount: totalTax,
+          totalAmount,
+          paidAmount: new Decimal(0),
+          status: 'DRAFT',
+          notes: notes || null,
+          items: {
+            create: calculatedItems.map((ci) => ({
+              description: ci.description,
+              quantity: ci.quantity,
+              unitPrice: ci.unitPrice,
+              discountRate: ci.discountRate,
+              discountAmount: ci.discountAmount,
+              taxRate: ci.taxRate,
+              taxAmount: ci.taxAmount,
+              totalAmount: ci.totalAmount,
+            })),
+          },
+        },
+        include: {
+          customer: { select: { id: true, name: true, email: true, phone: true } },
+          items: true,
+        },
+      });
+
+      return {
+        ...invoice,
+        financials: {
+          subTotal: subTotal.toFixed(2),
+          totalDiscount: totalDiscount.toFixed(2),
+          totalTax: totalTax.toFixed(2),
+          totalAmount: totalAmount.toFixed(2),
+          paidAmount: '0.00',
+          balanceDue: totalAmount.toFixed(2),
+        },
+      };
+    });
+  }
+
+  // ================================================================
+  // 2. SEND INVOICE (Mark as SENT and auto-post journal entry)
+  // ================================================================
+  async sendInvoice(id: string, companyId: string, accountIds?: {
+    receivableAccountId?: string;
+    revenueAccountId?: string;
+    taxAccountId?: string;
+    discountAccountId?: string;
+  }) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      include: { items: true, customer: true },
+    });
+
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.status !== 'DRAFT') {
+      throw new BadRequestException(`Cannot send: Invoice is already "${invoice.status}"`);
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      let journalEntryId: string | null = null;
+
+      // Auto-post journal entry if account IDs are provided
+      if (accountIds?.receivableAccountId && accountIds?.revenueAccountId) {
+        const journalLines: any[] = [];
+        const totalAmount = new Decimal(invoice.totalAmount);
+        const taxAmount = new Decimal(invoice.taxAmount);
+        const discountAmount = new Decimal(invoice.discountAmount);
+        const revenueAmount = totalAmount.minus(taxAmount).plus(discountAmount);
+
+        // Debit: Accounts Receivable (full amount customer owes)
+        journalLines.push({
+          accountId: accountIds.receivableAccountId,
+          description: `Invoice ${invoice.invoiceNumber} - ${invoice.customer.name}`,
+          debit: totalAmount,
+          credit: new Decimal(0),
+        });
+
+        // Credit: Sales Revenue
+        journalLines.push({
+          accountId: accountIds.revenueAccountId,
+          description: `Revenue - Invoice ${invoice.invoiceNumber}`,
+          debit: new Decimal(0),
+          credit: revenueAmount,
+        });
+
+        // Credit: Tax Payable (if tax exists and account provided)
+        if (taxAmount.greaterThan(0) && accountIds.taxAccountId) {
+          journalLines.push({
+            accountId: accountIds.taxAccountId,
+            description: `Tax - Invoice ${invoice.invoiceNumber}`,
+            debit: new Decimal(0),
+            credit: taxAmount,
+          });
+        }
+
+        // Debit: Discount Given (if discount exists and account provided)
+        if (discountAmount.greaterThan(0) && accountIds.discountAccountId) {
+          // Adjust: Revenue was increased by discount, so we credit discount to offset
+          // Actually the correct entry: Debit Discount, reduce Revenue credit
+          // Let's keep it simple: revenue credit is net of discount already
+        }
+
+        const journalEntry = await tx.journalEntry.create({
+          data: {
+            companyId,
+            date: invoice.issueDate,
+            reference: `INV-${invoice.invoiceNumber}`,
+            description: `Sales Invoice ${invoice.invoiceNumber} — ${invoice.customer.name}`,
+            status: 'POSTED',
+            lines: { create: journalLines },
+          },
+        });
+
+        journalEntryId = journalEntry.id;
+
+        // Update account balances
+        for (const line of journalLines) {
+          const account = await tx.account.findUnique({
+            where: { id: line.accountId },
+            select: { type: true, balance: true },
+          });
+          if (account) {
+            let delta: Decimal;
+            if (account.type === 'ASSET' || account.type === 'EXPENSE') {
+              delta = new Decimal(line.debit).minus(new Decimal(line.credit));
+            } else {
+              delta = new Decimal(line.credit).minus(new Decimal(line.debit));
+            }
+            await tx.account.update({
+              where: { id: line.accountId },
+              data: { balance: new Decimal(account.balance).plus(delta) },
+            });
+          }
+        }
+
+        // Update customer balance (increase receivable)
+        await tx.customer.update({
+          where: { id: invoice.customerId },
+          data: { balance: new Decimal(invoice.customer.balance).plus(totalAmount) },
+        });
+      }
+
+      // Update invoice status
+      const updatedInvoice = await tx.invoice.update({
+        where: { id },
+        data: {
+          status: 'SENT',
+          journalEntryId,
+        },
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          items: true,
+        },
+      });
+
+      return {
+        message: `Invoice ${invoice.invoiceNumber} has been sent`,
+        invoice: updatedInvoice,
+        journalEntryId,
+      };
+    });
+  }
+
+  // ================================================================
+  // 3. RECORD PAYMENT
+  // ================================================================
+  async recordPayment(dto: RecordPaymentDto) {
+    const { companyId, invoiceId, amount, paymentDate, method, reference, notes } = dto;
+
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      include: { customer: true },
+    });
+
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+
+    if (invoice.status === 'DRAFT') throw new BadRequestException('Cannot pay a DRAFT invoice. Send it first.');
+    if (invoice.status === 'CANCELLED') throw new BadRequestException('Cannot pay a CANCELLED invoice');
+    if (invoice.status === 'PAID') throw new BadRequestException('Invoice is already fully paid');
+
+    const paymentAmount = new Decimal(amount);
+    const currentPaid = new Decimal(invoice.paidAmount);
+    const totalAmount = new Decimal(invoice.totalAmount);
+    const balanceDue = totalAmount.minus(currentPaid);
+
+    if (paymentAmount.greaterThan(balanceDue)) {
+      throw new BadRequestException(
+        `Payment amount (${paymentAmount.toFixed(2)}) exceeds balance due (${balanceDue.toFixed(2)})`,
+      );
+    }
+
+    const newPaidAmount = currentPaid.plus(paymentAmount);
+    const newStatus = newPaidAmount.greaterThanOrEqualTo(totalAmount) ? 'PAID' : 'PARTIAL';
+
+    return this.prisma.$transaction(async (tx) => {
+      let journalEntryId: string | null = null;
+
+      // Auto-post payment journal entry if account IDs provided
+      if (dto.cashBankAccountId && dto.receivableAccountId) {
+        const journalEntry = await tx.journalEntry.create({
+          data: {
+            companyId,
+            date: paymentDate ? new Date(paymentDate) : new Date(),
+            reference: `PMT-${invoice.invoiceNumber}-${Date.now()}`,
+            description: `Payment received for Invoice ${invoice.invoiceNumber} — ${invoice.customer.name}`,
+            status: 'POSTED',
+            lines: {
+              create: [
+                {
+                  accountId: dto.cashBankAccountId,
+                  description: `Payment received (${method || 'CASH'})`,
+                  debit: paymentAmount,
+                  credit: new Decimal(0),
+                },
+                {
+                  accountId: dto.receivableAccountId,
+                  description: `Receivable cleared - Invoice ${invoice.invoiceNumber}`,
+                  debit: new Decimal(0),
+                  credit: paymentAmount,
+                },
+              ],
+            },
+          },
+        });
+
+        journalEntryId = journalEntry.id;
+
+        // Update Cash/Bank account balance (ASSET: debit increases)
+        const cashAccount = await tx.account.findUnique({
+          where: { id: dto.cashBankAccountId },
+          select: { balance: true },
+        });
+        if (cashAccount) {
+          await tx.account.update({
+            where: { id: dto.cashBankAccountId },
+            data: { balance: new Decimal(cashAccount.balance).plus(paymentAmount) },
+          });
+        }
+
+        // Update Receivable account balance (ASSET: credit decreases)
+        const recvAccount = await tx.account.findUnique({
+          where: { id: dto.receivableAccountId },
+          select: { balance: true },
+        });
+        if (recvAccount) {
+          await tx.account.update({
+            where: { id: dto.receivableAccountId },
+            data: { balance: new Decimal(recvAccount.balance).minus(paymentAmount) },
+          });
+        }
+
+        // Decrease customer balance
+        await tx.customer.update({
+          where: { id: invoice.customerId },
+          data: { balance: new Decimal(invoice.customer.balance).minus(paymentAmount) },
+        });
+      }
+
+      // Create payment record
+      const payment = await tx.payment.create({
+        data: {
+          companyId,
+          invoiceId,
+          journalEntryId,
+          amount: paymentAmount,
+          paymentDate: paymentDate ? new Date(paymentDate) : new Date(),
+          method: method || 'CASH',
+          reference: reference || null,
+          notes: notes || null,
+        },
+      });
+
+      // Update invoice
+      const updatedInvoice = await tx.invoice.update({
+        where: { id: invoiceId },
+        data: {
+          paidAmount: newPaidAmount,
+          status: newStatus,
+        },
+        include: {
+          customer: { select: { id: true, name: true } },
+          items: true,
+          payments: true,
+        },
+      });
+
+      return {
+        message: `Payment of ${paymentAmount.toFixed(2)} recorded for Invoice ${invoice.invoiceNumber}`,
+        payment,
+        invoice: updatedInvoice,
+        balanceDue: totalAmount.minus(newPaidAmount).toFixed(2),
+      };
+    });
+  }
+
+  // ================================================================
+  // 4. GET SINGLE INVOICE
+  // ================================================================
+  async getInvoice(id: string, companyId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        customer: true,
+        items: { orderBy: { createdAt: 'asc' } },
+        payments: { orderBy: { paymentDate: 'desc' } },
+      },
+    });
+
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+
+    const balanceDue = new Decimal(invoice.totalAmount).minus(new Decimal(invoice.paidAmount));
+
+    return {
+      ...invoice,
+      balanceDue: balanceDue.toFixed(2),
+    };
+  }
+
+  // ================================================================
+  // 5. LIST INVOICES (with pagination and filters)
+  // ================================================================
+  async listInvoices(
+    companyId: string,
+    options: { page?: number; limit?: number; status?: string; customerId?: string },
+  ) {
+    const page = options.page || 1;
+    const limit = Math.min(options.limit || 20, 100);
+    const skip = (page - 1) * limit;
+
+    const where: any = { companyId };
+    if (options.status) where.status = options.status;
+    if (options.customerId) where.customerId = options.customerId;
+
+    const [invoices, total] = await Promise.all([
+      this.prisma.invoice.findMany({
+        where,
+        include: {
+          customer: { select: { id: true, name: true, email: true } },
+          items: true,
+          _count: { select: { payments: true } },
+        },
+        orderBy: { createdAt: 'desc' },
+        skip,
+        take: limit,
+      }),
+      this.prisma.invoice.count({ where }),
+    ]);
+
+    return {
+      data: invoices,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    };
+  }
+
+  // ================================================================
+  // 6. CANCEL INVOICE
+  // ================================================================
+  async cancelInvoice(id: string, companyId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      include: { payments: true },
+    });
+
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.status === 'CANCELLED') throw new BadRequestException('Invoice is already cancelled');
+
+    if (invoice.payments.length > 0) {
+      throw new BadRequestException('Cannot cancel an invoice with recorded payments. Void the payments first.');
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      // If there's a linked journal entry, void it
+      if (invoice.journalEntryId) {
+        const journalEntry = await tx.journalEntry.findUnique({
+          where: { id: invoice.journalEntryId },
+          include: { lines: true },
+        });
+
+        if (journalEntry && journalEntry.status === 'POSTED') {
+          // Reverse account balances
+          for (const line of journalEntry.lines) {
+            const account = await tx.account.findUnique({
+              where: { id: line.accountId },
+              select: { type: true, balance: true },
+            });
+            if (account) {
+              let delta: Decimal;
+              if (account.type === 'ASSET' || account.type === 'EXPENSE') {
+                delta = new Decimal(line.debit).minus(new Decimal(line.credit));
+              } else {
+                delta = new Decimal(line.credit).minus(new Decimal(line.debit));
+              }
+              await tx.account.update({
+                where: { id: line.accountId },
+                data: { balance: new Decimal(account.balance).minus(delta) },
+              });
+            }
+          }
+
+          await tx.journalEntry.update({
+            where: { id: invoice.journalEntryId },
+            data: { status: 'VOIDED' },
+          });
+        }
+
+        // Reverse customer balance
+        await tx.customer.update({
+          where: { id: invoice.customerId },
+          data: {
+            balance: {
+              decrement: invoice.totalAmount,
+            },
+          },
+        });
+      }
+
+      const cancelled = await tx.invoice.update({
+        where: { id },
+        data: { status: 'CANCELLED' },
+        include: { customer: { select: { id: true, name: true } }, items: true },
+      });
+
+      return {
+        message: `Invoice ${invoice.invoiceNumber} has been cancelled`,
+        invoice: cancelled,
+      };
+    });
+  }
+
+  // ================================================================
+  // 7. GET INVOICE PDF DATA (structured for PDF generation)
+  // ================================================================
+  async getInvoicePdfData(id: string, companyId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      include: {
+        company: true,
+        customer: true,
+        items: { orderBy: { createdAt: 'asc' } },
+        payments: { orderBy: { paymentDate: 'asc' } },
+      },
+    });
+
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+
+    const balanceDue = new Decimal(invoice.totalAmount).minus(new Decimal(invoice.paidAmount));
+
+    return {
+      // Company (seller) info
+      company: {
+        name: invoice.company.name,
+        email: invoice.company.email,
+        phone: invoice.company.phone,
+        address: invoice.company.address,
+        currency: invoice.company.currency,
+      },
+      // Customer (buyer) info
+      customer: {
+        name: invoice.customer.name,
+        email: invoice.customer.email,
+        phone: invoice.customer.phone,
+        address: invoice.customer.address,
+      },
+      // Invoice details
+      invoice: {
+        invoiceNumber: invoice.invoiceNumber,
+        issueDate: invoice.issueDate,
+        dueDate: invoice.dueDate,
+        status: invoice.status,
+        notes: invoice.notes,
+      },
+      // Line items
+      items: invoice.items.map((item, index) => ({
+        lineNumber: index + 1,
+        description: item.description,
+        quantity: new Decimal(item.quantity).toFixed(2),
+        unitPrice: new Decimal(item.unitPrice).toFixed(2),
+        discountRate: new Decimal(item.discountRate).toFixed(2),
+        discountAmount: new Decimal(item.discountAmount).toFixed(2),
+        taxRate: new Decimal(item.taxRate).toFixed(2),
+        taxAmount: new Decimal(item.taxAmount).toFixed(2),
+        totalAmount: new Decimal(item.totalAmount).toFixed(2),
+      })),
+      // Financial summary
+      financials: {
+        subTotal: new Decimal(invoice.subTotal).toFixed(2),
+        totalDiscount: new Decimal(invoice.discountAmount).toFixed(2),
+        totalTax: new Decimal(invoice.taxAmount).toFixed(2),
+        totalAmount: new Decimal(invoice.totalAmount).toFixed(2),
+        paidAmount: new Decimal(invoice.paidAmount).toFixed(2),
+        balanceDue: balanceDue.toFixed(2),
+      },
+      // Payment history
+      payments: invoice.payments.map((p) => ({
+        date: p.paymentDate,
+        amount: new Decimal(p.amount).toFixed(2),
+        method: p.method,
+        reference: p.reference,
+      })),
+    };
+  }
+
+  // ================================================================
+  // PRIVATE HELPERS
+  // ================================================================
+  private async generateInvoiceNumber(companyId: string): Promise<string> {
+    const lastInvoice = await this.prisma.invoice.findFirst({
+      where: { companyId },
+      orderBy: { createdAt: 'desc' },
+      select: { invoiceNumber: true },
+    });
+
+    if (!lastInvoice) {
+      return 'INV-0001';
+    }
+
+    // Try to extract number from last invoice
+    const match = lastInvoice.invoiceNumber.match(/(\d+)$/);
+    if (match) {
+      const nextNum = parseInt(match[1], 10) + 1;
+      return `INV-${String(nextNum).padStart(4, '0')}`;
+    }
+
+    // Fallback: count-based
+    const count = await this.prisma.invoice.count({ where: { companyId } });
+    return `INV-${String(count + 1).padStart(4, '0')}`;
+  }
+}

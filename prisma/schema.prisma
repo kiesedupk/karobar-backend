@@ -1,0 +1,249 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ==========================================
+// 1. Core Tenant & Auth Models
+// ==========================================
+
+model Company {
+  id        String   @id @default(uuid())
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  currency  String   @default("PKR")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  users          UserCompany[]
+  roles          Role[]
+  accounts       Account[]
+  journalEntries JournalEntry[]
+  customers      Customer[]
+  vendors        Vendor[]
+  invoices       Invoice[]
+}
+
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  firstName String
+  lastName  String?
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  companies UserCompany[]
+}
+
+model Role {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String // e.g. "ADMIN", "ACCOUNTANT", "MANAGER", "CASHIER"
+  description String?
+  permissions String // JSON string or comma-separated permissions (e.g., "invoice:create,report:view")
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  userCompanies UserCompany[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model UserCompany {
+  id        String   @id @default(uuid())
+  userId    String
+  companyId String
+  roleId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role    Role    @relation(fields: [roleId], references: [id])
+
+  @@unique([userId, companyId])
+  @@index([userId])
+  @@index([companyId])
+  @@index([roleId])
+}
+
+// ==========================================
+// 2. Chart of Accounts & General Ledger (GL)
+// ==========================================
+
+model Account {
+  id          String   @id @default(uuid())
+  companyId   String
+  parentId    String?  // Self-relation for parent-child hierarchy
+  code        String   // Account code (e.g., "1010", "4000")
+  name        String
+  type        String   // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
+  subType     String?  // Optional sub-classification (e.g., "BANK", "CASH", "RECEIVABLE")
+  description String?
+  balance     Decimal  @default(0) // Cached ledger balance (Debits - Credits or Credits - Debits depending on type)
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent       Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children     Account[]     @relation("AccountHierarchy")
+  journalLines JournalLine[]
+
+  @@unique([companyId, code])
+  @@index([companyId])
+  @@index([parentId])
+}
+
+model JournalEntry {
+  id          String   @id @default(uuid())
+  companyId   String
+  date        DateTime @default(now())
+  reference   String? // Reference/Voucher number
+  description String
+  status      String   @default("POSTED") // DRAFT, POSTED, VOIDED
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lines   JournalLine[]
+
+  @@unique([companyId, reference]) // Reference number unique per company
+  @@index([companyId])
+}
+
+model JournalLine {
+  id             String   @id @default(uuid())
+  journalEntryId String
+  accountId      String
+  description    String?
+  debit          Decimal  @default(0) // Precise accounting Decimal representation
+  credit         Decimal  @default(0) // Precise accounting Decimal representation
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
+  account      Account      @relation(fields: [accountId], references: [id])
+
+  @@index([journalEntryId])
+  @@index([accountId])
+}
+
+// ==========================================
+// 3. Contacts & Business Ledger (AR/AP)
+// ==========================================
+
+model Customer {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  balance   Decimal  @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoices Invoice[]
+
+  @@index([companyId])
+}
+
+model Vendor {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String
+  email     String?
+  phone     String?
+  address   String?
+  balance   Decimal  @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+}
+
+// ==========================================
+// 4. Invoicing & Payments Module
+// ==========================================
+
+model Invoice {
+  id              String    @id @default(uuid())
+  companyId       String
+  customerId      String
+  journalEntryId  String?   // Link to auto-posted journal entry
+  invoiceNumber   String
+  issueDate       DateTime
+  dueDate         DateTime?
+  subTotal        Decimal   @default(0)
+  discountAmount  Decimal   @default(0)
+  taxAmount       Decimal   @default(0)
+  totalAmount     Decimal   @default(0)
+  paidAmount      Decimal   @default(0)
+  status          String    @default("DRAFT") // DRAFT, SENT, PARTIAL, PAID, OVERDUE, CANCELLED
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer Customer      @relation(fields: [customerId], references: [id])
+  items    InvoiceItem[]
+  payments Payment[]
+
+  @@unique([companyId, invoiceNumber])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model InvoiceItem {
+  id             String   @id @default(uuid())
+  invoiceId      String
+  description    String
+  quantity       Decimal  @default(1)
+  unitPrice      Decimal
+  discountRate   Decimal  @default(0) // Discount percentage e.g. 5.0 for 5%
+  discountAmount Decimal  @default(0)
+  taxRate        Decimal  @default(0) // Tax percentage e.g. 17.0 for 17%
+  taxAmount      Decimal  @default(0)
+  totalAmount    Decimal
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+
+  @@index([invoiceId])
+}
+
+model Payment {
+  id             String   @id @default(uuid())
+  companyId      String
+  invoiceId      String
+  journalEntryId String?  // Link to auto-posted journal entry for payment
+  amount         Decimal
+  paymentDate    DateTime @default(now())
+  method         String   @default("CASH") // CASH, BANK, CHEQUE, ONLINE
+  reference      String?  // Cheque number, transaction ref, etc.
+  notes          String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  invoice Invoice @relation(fields: [invoiceId], references: [id])
+
+  @@index([companyId])
+  @@index([invoiceId])
+}
+
