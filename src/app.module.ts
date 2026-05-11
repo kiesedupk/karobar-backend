@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -11,6 +11,7 @@ import { InvoicesModule } from './modules/invoices/invoices.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { CustomersModule } from './modules/customers/customers.module';
 import { VendorsModule } from './modules/vendors/vendors.module';
+import { TenantMiddleware } from './common/tenant-context/tenant.middleware';
 
 @Module({
   imports: [
@@ -21,4 +22,11 @@ import { VendorsModule } from './modules/vendors/vendors.module';
   controllers: [AppController],
   providers: [AppService],
 })
-export class AppModule {}
+export class AppModule implements NestModule {
+  configure(consumer: MiddlewareConsumer) {
+    // Apply Multi-Tenant Middleware globally to all routes
+    consumer
+      .apply(TenantMiddleware)
+      .forRoutes('*');
+  }
+}
