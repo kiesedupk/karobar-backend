@@ -58,24 +58,42 @@ export class ReportsService {
       }
     }
 
+    // 1. Single optimized database query to aggregate all journal lines grouped by accountId
+    const aggs = await this.prisma.journalLine.groupBy({
+      by: ['accountId'],
+      where: {
+        ...journalWhere,
+        // Ensure we only aggregate for active accounts belonging to the company
+        account: {
+          companyId,
+          isActive: true,
+        },
+      },
+      _sum: { debit: true, credit: true },
+    });
+
+    // Map aggregations by accountId for constant-time lookup
+    const aggMap = new Map<string, { debit: Decimal; credit: Decimal }>();
+    for (const a of aggs) {
+      aggMap.set(a.accountId, {
+        debit: new Decimal(a._sum.debit || 0),
+        credit: new Decimal(a._sum.credit || 0),
+      });
+    }
+
     const results: AccountBalance[] = [];
 
+    // 2. Compute final balances with proper normal-balance rules
     for (const account of accounts) {
-      const agg = await this.prisma.journalLine.aggregate({
-        where: {
-          accountId: account.id,
-          ...journalWhere,
-        },
-        _sum: { debit: true, credit: true },
-      });
+      const agg = aggMap.get(account.id) || { debit: new Decimal(0), credit: new Decimal(0) };
 
-      const totalDebits = new Decimal(agg._sum.debit || 0);
-      const totalCredits = new Decimal(agg._sum.credit || 0);
+      const totalDebits = agg.debit;
+      const totalCredits = agg.credit;
 
       // Skip zero-activity accounts
       if (totalDebits.isZero() && totalCredits.isZero()) continue;
 
-      // Normal balance rule
+      // Normal balance rule (Asset/Expense debits increase; Equity/Liability/Revenue credits increase)
       let balance: Decimal;
       if (account.type === 'ASSET' || account.type === 'EXPENSE') {
         balance = totalDebits.minus(totalCredits);
