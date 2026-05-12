@@ -48,8 +48,8 @@ export class InvoicesController {
 
   @Permissions('invoice:read')
   @Get(':id')
-  getInvoiceDetail(@Param('id') id: string, @Query('companyId') companyId: string) {
-    return this.invoicesService.getInvoiceDetail(id, companyId);
+  getInvoice(@Param('id') id: string, @Query('companyId') companyId: string) {
+    return this.invoicesService.getInvoice(id, companyId);
   }
 
   @Permissions('invoice:create')

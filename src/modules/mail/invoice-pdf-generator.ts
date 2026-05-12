@@ -1,4 +1,4 @@
-import * as PDFDocument from 'pdfkit';
+import PDFDocument from 'pdfkit';
 
 export async function generateInvoicePdfBuffer(invoice: any, company: any): Promise<Buffer> {
   return new Promise((resolve, reject) => {
@@ -63,7 +63,7 @@ export async function generateInvoicePdfBuffer(invoice: any, company: any): Prom
         doc.fillColor('#333333');
       }
 
-      doc.text(i + 1, 60, rowY);
+      doc.text(String(i + 1), 60, rowY);
       doc.text(item.description, 100, rowY, { width: 180 });
       doc.text(item.quantity, 300, rowY, { width: 40, align: 'right' });
       doc.text(parseFloat(item.unitPrice).toLocaleString(), 350, rowY, { width: 80, align: 'right' });

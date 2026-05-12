@@ -1128,6 +1128,9 @@ export class InvoicesService {
     }
 
     const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) {
+      throw new NotFoundException('Company not found');
+    }
     
     // 1. Generate PDF Buffer
     const pdfBuffer = await generateInvoicePdfBuffer(invoice, company);
