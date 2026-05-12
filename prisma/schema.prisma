@@ -32,6 +32,90 @@ model Company {
   expenses           Expense[]
   auditLogs          AuditLog[]
   recurringInvoices  RecurringInvoice[]
+  bankAccounts       BankAccount[]
+  transfers          Transfer[]
+}
+
+// ==========================================
+// 8. Bank & Cash Management
+// ==========================================
+
+model BankAccount {
+  id              String   @id @default(uuid())
+  companyId       String
+  glAccountId     String   // Links to GL Account (Account model)
+  name            String   // e.g. "HBL Current Account"
+  accountNumber   String?  // Real bank account number
+  bankName        String?  // e.g. "Habib Bank Limited"
+  branchName      String?
+  branchCode      String?
+  accountType     String   @default("BANK") // BANK, CASH, MOBILE_WALLET
+  currency        String   @default("PKR")
+  openingBalance  Decimal  @default(0)
+  currentBalance  Decimal  @default(0)
+  isActive        Boolean  @default(true)
+  description     String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company           Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  transactionsFrom  BankTransaction[] @relation("FromAccount")
+  transactionsTo    BankTransaction[] @relation("ToAccount")
+  transfersFrom     Transfer[]        @relation("TransferFrom")
+  transfersTo       Transfer[]        @relation("TransferTo")
+
+  @@index([companyId])
+  @@index([glAccountId])
+  @@index([accountType])
+}
+
+model Transfer {
+  id              String   @id @default(uuid())
+  companyId       String
+  fromAccountId   String
+  toAccountId     String
+  journalEntryId  String?
+  amount          Decimal
+  transferDate    DateTime @default(now())
+  reference       String?
+  description     String
+  status          String   @default("COMPLETED") // COMPLETED, VOIDED
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromAccount BankAccount @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccount   BankAccount @relation("TransferTo", fields: [toAccountId], references: [id])
+
+  @@index([companyId])
+  @@index([fromAccountId])
+  @@index([toAccountId])
+  @@index([transferDate])
+}
+
+model BankTransaction {
+  id              String   @id @default(uuid())
+  companyId       String
+  bankAccountId   String
+  oppositeAccountId String? // The other account in a transfer
+  journalEntryId  String?
+  type            String   // DEBIT, CREDIT
+  category        String   // TRANSFER, PAYMENT_IN, PAYMENT_OUT, ADJUSTMENT, OPENING
+  amount          Decimal
+  runningBalance  Decimal  @default(0)
+  transactionDate DateTime @default(now())
+  description     String
+  reference       String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  bankAccount     BankAccount  @relation("FromAccount", fields: [bankAccountId], references: [id], onDelete: Cascade)
+  oppositeAccount BankAccount? @relation("ToAccount", fields: [oppositeAccountId], references: [id])
+
+  @@index([companyId])
+  @@index([bankAccountId])
+  @@index([transactionDate])
+  @@index([type])
 }
 
 model User {

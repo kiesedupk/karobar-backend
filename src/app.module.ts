@@ -15,13 +15,14 @@ import { TenantMiddleware } from './common/tenant-context/tenant.middleware';
 import { ExpensesModule } from './modules/expenses/expenses.module';
 import { AuditModule } from './common/audit/audit.module';
 import { ScheduleModule } from '@nestjs/schedule';
+import { BankingModule } from './modules/banking/banking.module';
 
 @Module({
   imports: [
     PrismaModule, AuthModule, UsersModule, CompaniesModule,
     AccountingModule, JournalModule, InvoicesModule, ReportsModule,
     CustomersModule, VendorsModule, ExpensesModule, AuditModule,
-    ScheduleModule.forRoot(),
+    ScheduleModule.forRoot(), BankingModule,
   ],
   controllers: [AppController],
   providers: [AppService],
