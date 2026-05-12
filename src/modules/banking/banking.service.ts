@@ -7,6 +7,7 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { Decimal } from '@prisma/client/runtime/library';
+import { PeriodsService } from '../periods/periods.service';
 import {
   CreateBankAccountDto,
   UpdateBankAccountDto,
@@ -19,6 +20,7 @@ export class BankingService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private periodsService: PeriodsService,
   ) {}
 
   // ================================================================
@@ -71,6 +73,9 @@ export class BankingService {
 
       // If opening balance > 0, post an opening journal entry
       if (opening.greaterThan(0)) {
+        // Check if period is closed
+        await this.periodsService.checkLock(companyId, new Date());
+
         // Find equity/owner's capital account as counterpart
         const equityAccount = await tx.account.findFirst({
           where: { companyId, type: 'EQUITY' },
@@ -223,6 +228,9 @@ export class BankingService {
 
   async createTransfer(dto: CreateTransferDto) {
     const { companyId, fromAccountId, toAccountId, amount, description, reference, transferDate } = dto;
+
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, transferDate || new Date());
 
     if (fromAccountId === toAccountId) throw new BadRequestException('Cannot transfer to the same account');
 
@@ -465,6 +473,9 @@ export class BankingService {
 
   async adjustBalance(dto: AdjustBalanceDto) {
     const { companyId, bankAccountId, amount, description, reference } = dto;
+
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, new Date());
 
     const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
     if (!account) throw new NotFoundException('Bank account not found');

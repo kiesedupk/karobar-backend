@@ -16,13 +16,14 @@ import { ExpensesModule } from './modules/expenses/expenses.module';
 import { AuditModule } from './common/audit/audit.module';
 import { ScheduleModule } from '@nestjs/schedule';
 import { BankingModule } from './modules/banking/banking.module';
+import { PeriodsModule } from './modules/periods/periods.module';
 
 @Module({
   imports: [
     PrismaModule, AuthModule, UsersModule, CompaniesModule,
     AccountingModule, JournalModule, InvoicesModule, ReportsModule,
     CustomersModule, VendorsModule, ExpensesModule, AuditModule,
-    ScheduleModule.forRoot(), BankingModule,
+    ScheduleModule.forRoot(), BankingModule, PeriodsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

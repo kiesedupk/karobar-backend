@@ -9,19 +9,24 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../../common/audit/audit.service';
+import { PeriodsService } from '../periods/periods.service';
 
 @Injectable()
 export class InvoicesService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private periodsService: PeriodsService,
   ) {}
 
   // ================================================================
   // 1. CREATE INVOICE
   // ================================================================
   async createInvoice(dto: CreateInvoiceDto) {
-    const { companyId, customerId, items, notes, globalDiscountAmount } = dto;
+    const { companyId, customerId, items, notes, globalDiscountAmount, issueDate } = dto;
+
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, issueDate || new Date());
 
     // Validate company
     const company = await this.prisma.company.findUnique({ where: { id: companyId } });
@@ -385,6 +390,9 @@ export class InvoicesService {
   async recordPayment(dto: RecordPaymentDto) {
     const { companyId, invoiceId, amount, paymentDate, method, reference, notes } = dto;
 
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, paymentDate || new Date());
+
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
       include: { customer: true },
@@ -599,6 +607,10 @@ export class InvoicesService {
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
+    
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, invoice.issueDate);
+    
     if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
     if (invoice.status === 'CANCELLED') throw new BadRequestException('Invoice is already cancelled');
 

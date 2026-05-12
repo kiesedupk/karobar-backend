@@ -1,4 +1,5 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { PeriodsService } from '../periods/periods.service';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { Decimal } from '@prisma/client/runtime/library';
@@ -9,10 +10,14 @@ export class ExpensesService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly auditService: AuditService,
+    private readonly periodsService: PeriodsService,
   ) {}
 
   async createExpense(dto: CreateExpenseDto) {
     const { companyId, expenseAccountId, paymentAccountId, vendorId, amount, description, date, referenceNumber } = dto;
+
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, date || new Date());
 
     // 1. Verify company
     const company = await this.prisma.company.findUnique({ where: { id: companyId } });

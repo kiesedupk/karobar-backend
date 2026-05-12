@@ -8,12 +8,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../../common/audit/audit.service';
+import { PeriodsService } from '../periods/periods.service';
 
 @Injectable()
 export class JournalService {
   constructor(
     private prisma: PrismaService,
     private auditService: AuditService,
+    private periodsService: PeriodsService,
   ) {}
 
   // ================================================================
@@ -21,6 +23,9 @@ export class JournalService {
   // ================================================================
   async createJournalEntry(dto: CreateJournalEntryDto) {
     const { companyId, date, reference, description, status, lines } = dto;
+    
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, date || new Date());
 
     // --- VALIDATION LAYER ---
 
@@ -279,6 +284,9 @@ export class JournalService {
       throw new BadRequestException('This journal entry is already voided');
     }
 
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, entry.date);
+
     if (entry.status === 'DRAFT') {
       throw new BadRequestException('Draft entries cannot be voided. Delete them instead.');
     }
@@ -339,6 +347,9 @@ export class JournalService {
     if (entry.status !== 'DRAFT') {
       throw new BadRequestException(`Cannot post: Entry is already "${entry.status}"`);
     }
+
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, entry.date);
 
     // Verify balance before posting
     let totalDebits = new Decimal(0);
@@ -404,6 +415,9 @@ export class JournalService {
         'Only DRAFT entries can be deleted. Posted entries must be voided instead.',
       );
     }
+
+    // Check if period is closed
+    await this.periodsService.checkLock(companyId, entry.date);
 
     await this.prisma.journalEntry.delete({ where: { id } });
     return { message: `Draft journal entry "${entry.reference || entry.id}" has been deleted` };

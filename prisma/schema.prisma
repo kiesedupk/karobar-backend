@@ -34,6 +34,50 @@ model Company {
   recurringInvoices  RecurringInvoice[]
   bankAccounts       BankAccount[]
   transfers          Transfer[]
+  fiscalYears        FiscalYear[]
+  accountingPeriods  AccountingPeriod[]
+}
+
+// ==========================================
+// 9. Accounting Periods & Fiscal Years
+// ==========================================
+
+model FiscalYear {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String   // e.g. "FY 2023-24"
+  startDate DateTime
+  endDate   DateTime
+  status    String   @default("OPEN") // OPEN, CLOSED
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  periods AccountingPeriod[]
+
+  @@index([companyId])
+}
+
+model AccountingPeriod {
+  id           String   @id @default(uuid())
+  companyId    String
+  fiscalYearId String
+  name         String   // e.g. "July 2023"
+  startDate    DateTime
+  endDate      DateTime
+  isClosed     Boolean  @default(false)
+  closedAt     DateTime?
+  closedBy     String?  // User ID who closed it
+  status       String   @default("OPEN") // OPEN, CLOSED, LOCKED
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalYear FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([fiscalYearId])
+  @@index([startDate, endDate])
 }
 
 // ==========================================
