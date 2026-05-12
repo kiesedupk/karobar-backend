@@ -26,11 +26,12 @@ model Company {
   roles          Role[]
   accounts       Account[]
   journalEntries JournalEntry[]
-  customers      Customer[]
-  vendors        Vendor[]
-  invoices       Invoice[]
-  expenses       Expense[]
-  auditLogs      AuditLog[]
+  customers          Customer[]
+  vendors            Vendor[]
+  invoices           Invoice[]
+  expenses           Expense[]
+  auditLogs          AuditLog[]
+  recurringInvoices  RecurringInvoice[]
 }
 
 model User {
@@ -157,8 +158,9 @@ model Customer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  invoices Invoice[]
+  company            Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  invoices           Invoice[]
+  recurringInvoices  RecurringInvoice[]
 
   @@index([companyId])
 }
@@ -197,10 +199,11 @@ model Invoice {
   taxAmount       Decimal   @default(0)
   totalAmount     Decimal   @default(0)
   paidAmount      Decimal   @default(0)
-  status          String    @default("DRAFT") // DRAFT, SENT, PARTIAL, PAID, OVERDUE, CANCELLED
-  notes           String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
+  status            String    @default("DRAFT") // DRAFT, SENT, PARTIAL, PAID, OVERDUE, CANCELLED
+  notes             String?
+  overdueNotifiedAt DateTime? // When overdue notification was last flagged
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   company  Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   customer Customer      @relation(fields: [customerId], references: [id])
@@ -276,6 +279,35 @@ model Expense {
   @@index([companyId])
   @@index([vendorId])
   @@index([status])
+}
+
+// ==========================================
+// 7. Recurring Invoices
+// ==========================================
+
+model RecurringInvoice {
+  id              String    @id @default(uuid())
+  companyId       String
+  customerId      String
+  frequency       String    // WEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM
+  intervalDays    Int?      // Custom interval in days (used when frequency=CUSTOM)
+  nextIssueDate   DateTime
+  endDate         DateTime? // null = indefinite
+  daysDueAfter    Int       @default(30) // Net-30 payment terms
+  templateItems   Json      // Line items template [{description, quantity, unitPrice, taxRate, discountRate}]
+  notes           String?
+  isActive        Boolean   @default(true)
+  lastGeneratedAt DateTime?
+  totalGenerated  Int       @default(0)
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer  Customer @relation(fields: [customerId], references: [id])
+
+  @@index([companyId])
+  @@index([nextIssueDate])
+  @@index([isActive])
 }
 
 // ==========================================

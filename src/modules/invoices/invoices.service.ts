@@ -414,8 +414,25 @@ export class InvoicesService {
     return this.prisma.$transaction(async (tx) => {
       let journalEntryId: string | null = null;
 
-      // Auto-post payment journal entry if account IDs provided
-      if (dto.cashBankAccountId && dto.receivableAccountId) {
+      // Auto-resolve account IDs if not provided
+      let cashBankAccountId = dto.cashBankAccountId;
+      let receivableAccountId = dto.receivableAccountId;
+
+      if (!cashBankAccountId) {
+        const acc = await tx.account.findFirst({
+          where: { companyId, OR: [{ subType: 'CASH' }, { code: '1010' }] },
+        });
+        if (acc) cashBankAccountId = acc.id;
+      }
+      if (!receivableAccountId) {
+        const acc = await tx.account.findFirst({
+          where: { companyId, OR: [{ subType: 'RECEIVABLE' }, { code: '1100' }] },
+        });
+        if (acc) receivableAccountId = acc.id;
+      }
+
+      // Auto-post payment journal entry if accounts are available
+      if (cashBankAccountId && receivableAccountId) {
         const journalEntry = await tx.journalEntry.create({
           data: {
             companyId,
@@ -426,13 +443,13 @@ export class InvoicesService {
             lines: {
               create: [
                 {
-                  accountId: dto.cashBankAccountId,
+                  accountId: cashBankAccountId,
                   description: `Payment received (${method || 'CASH'})`,
                   debit: paymentAmount,
                   credit: new Decimal(0),
                 },
                 {
-                  accountId: dto.receivableAccountId,
+                  accountId: receivableAccountId,
                   description: `Receivable cleared - Invoice ${invoice.invoiceNumber}`,
                   debit: new Decimal(0),
                   credit: paymentAmount,
@@ -446,24 +463,24 @@ export class InvoicesService {
 
         // Update Cash/Bank account balance (ASSET: debit increases)
         const cashAccount = await tx.account.findUnique({
-          where: { id: dto.cashBankAccountId },
+          where: { id: cashBankAccountId },
           select: { balance: true },
         });
         if (cashAccount) {
           await tx.account.update({
-            where: { id: dto.cashBankAccountId },
+            where: { id: cashBankAccountId },
             data: { balance: new Decimal(cashAccount.balance).plus(paymentAmount) },
           });
         }
 
         // Update Receivable account balance (ASSET: credit decreases)
         const recvAccount = await tx.account.findUnique({
-          where: { id: dto.receivableAccountId },
+          where: { id: receivableAccountId },
           select: { balance: true },
         });
         if (recvAccount) {
           await tx.account.update({
-            where: { id: dto.receivableAccountId },
+            where: { id: receivableAccountId },
             data: { balance: new Decimal(recvAccount.balance).minus(paymentAmount) },
           });
         }
@@ -746,5 +763,338 @@ export class InvoicesService {
     // Fallback: count-based
     const count = await this.prisma.invoice.count({ where: { companyId } });
     return `INV-${String(count + 1).padStart(4, '0')}`;
+  }
+
+  // ================================================================
+  // RECURRING INVOICES
+  // ================================================================
+
+  async createRecurring(dto: any) {
+    const { companyId, customerId, frequency, intervalDays, nextIssueDate, endDate, daysDueAfter, templateItems, notes } = dto;
+
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) throw new NotFoundException('Company not found');
+
+    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    if (!customer) throw new NotFoundException('Customer not found');
+    if (customer.companyId !== companyId) throw new BadRequestException('Customer does not belong to this company');
+
+    const recurring = await this.prisma.recurringInvoice.create({
+      data: {
+        companyId,
+        customerId,
+        frequency,
+        intervalDays: frequency === 'CUSTOM' ? intervalDays : null,
+        nextIssueDate: new Date(nextIssueDate),
+        endDate: endDate ? new Date(endDate) : null,
+        daysDueAfter: daysDueAfter || 30,
+        templateItems: templateItems as any,
+        notes: notes || null,
+        isActive: true,
+      },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    this.auditService.log({
+      companyId,
+      action: 'CREATE',
+      entity: 'RecurringInvoice',
+      entityId: recurring.id,
+      description: `Recurring invoice created for ${customer.name} — ${frequency}`,
+    });
+
+    return recurring;
+  }
+
+  async listRecurring(companyId: string) {
+    return this.prisma.recurringInvoice.findMany({
+      where: { companyId },
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async updateRecurring(id: string, companyId: string, dto: any) {
+    const existing = await this.prisma.recurringInvoice.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Recurring invoice not found');
+    if (existing.companyId !== companyId) throw new BadRequestException('Does not belong to this company');
+
+    const data: any = {};
+    if (dto.frequency !== undefined) data.frequency = dto.frequency;
+    if (dto.intervalDays !== undefined) data.intervalDays = dto.intervalDays;
+    if (dto.nextIssueDate !== undefined) data.nextIssueDate = new Date(dto.nextIssueDate);
+    if (dto.endDate !== undefined) data.endDate = dto.endDate ? new Date(dto.endDate) : null;
+    if (dto.daysDueAfter !== undefined) data.daysDueAfter = dto.daysDueAfter;
+    if (dto.templateItems !== undefined) data.templateItems = dto.templateItems as any;
+    if (dto.notes !== undefined) data.notes = dto.notes;
+    if (dto.isActive !== undefined) data.isActive = dto.isActive;
+
+    return this.prisma.recurringInvoice.update({
+      where: { id },
+      data,
+      include: {
+        customer: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async deleteRecurring(id: string, companyId: string) {
+    const existing = await this.prisma.recurringInvoice.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Recurring invoice not found');
+    if (existing.companyId !== companyId) throw new BadRequestException('Does not belong to this company');
+
+    await this.prisma.recurringInvoice.update({
+      where: { id },
+      data: { isActive: false },
+    });
+
+    return { message: 'Recurring invoice deactivated' };
+  }
+
+  async generateDueRecurringInvoices(companyId?: string) {
+    const now = new Date();
+    const where: any = {
+      isActive: true,
+      nextIssueDate: { lte: now },
+    };
+    if (companyId) where.companyId = companyId;
+
+    // Also exclude templates that have passed their end date
+    const templates = await this.prisma.recurringInvoice.findMany({
+      where,
+      include: { customer: true },
+    });
+
+    const generated: any[] = [];
+
+    for (const template of templates) {
+      // Skip if past end date
+      if (template.endDate && template.endDate < now) {
+        await this.prisma.recurringInvoice.update({
+          where: { id: template.id },
+          data: { isActive: false },
+        });
+        continue;
+      }
+
+      try {
+        // Parse template items
+        const items = (template.templateItems as any[]).map((item: any) => ({
+          description: item.description,
+          quantity: item.quantity,
+          unitPrice: item.unitPrice,
+          discountRate: item.discountRate || 0,
+          taxRate: item.taxRate || 0,
+        }));
+
+        // Calculate due date
+        const issueDate = template.nextIssueDate;
+        const dueDate = new Date(issueDate);
+        dueDate.setDate(dueDate.getDate() + template.daysDueAfter);
+
+        // Create real invoice
+        const invoice = await this.createInvoice({
+          companyId: template.companyId,
+          customerId: template.customerId,
+          issueDate: issueDate.toISOString(),
+          dueDate: dueDate.toISOString(),
+          items,
+          notes: template.notes || `Auto-generated from recurring template`,
+        });
+
+        // Advance nextIssueDate
+        const nextDate = this.calculateNextDate(issueDate, template.frequency, template.intervalDays);
+
+        await this.prisma.recurringInvoice.update({
+          where: { id: template.id },
+          data: {
+            nextIssueDate: nextDate,
+            lastGeneratedAt: now,
+            totalGenerated: { increment: 1 },
+          },
+        });
+
+        generated.push({
+          recurringId: template.id,
+          customerName: template.customer.name,
+          invoiceId: invoice.id,
+          invoiceNumber: invoice.invoiceNumber,
+        });
+      } catch (err: any) {
+        // Log error but continue with other templates
+        console.error(`Failed to generate recurring invoice ${template.id}:`, err.message);
+      }
+    }
+
+    return {
+      message: `Generated ${generated.length} invoice(s) from ${templates.length} recurring template(s)`,
+      generated,
+    };
+  }
+
+  private calculateNextDate(current: Date, frequency: string, intervalDays?: number | null): Date {
+    const next = new Date(current);
+    switch (frequency) {
+      case 'WEEKLY':
+        next.setDate(next.getDate() + 7);
+        break;
+      case 'MONTHLY':
+        next.setMonth(next.getMonth() + 1);
+        break;
+      case 'QUARTERLY':
+        next.setMonth(next.getMonth() + 3);
+        break;
+      case 'YEARLY':
+        next.setFullYear(next.getFullYear() + 1);
+        break;
+      case 'CUSTOM':
+        next.setDate(next.getDate() + (intervalDays || 30));
+        break;
+      default:
+        next.setMonth(next.getMonth() + 1);
+    }
+    return next;
+  }
+
+  // ================================================================
+  // OVERDUE TRACKING
+  // ================================================================
+
+  async markOverdueInvoices(companyId?: string) {
+    const now = new Date();
+    const where: any = {
+      status: { in: ['SENT', 'PARTIAL'] },
+      dueDate: { lt: now },
+    };
+    if (companyId) where.companyId = companyId;
+
+    const overdueInvoices = await this.prisma.invoice.findMany({
+      where,
+      select: { id: true, invoiceNumber: true, companyId: true },
+    });
+
+    if (overdueInvoices.length === 0) {
+      return { message: 'No overdue invoices found', count: 0 };
+    }
+
+    const result = await this.prisma.invoice.updateMany({
+      where: { id: { in: overdueInvoices.map((i) => i.id) } },
+      data: {
+        status: 'OVERDUE',
+        overdueNotifiedAt: now,
+      },
+    });
+
+    // Audit log for each
+    for (const inv of overdueInvoices) {
+      this.auditService.log({
+        companyId: inv.companyId,
+        action: 'UPDATE',
+        entity: 'Invoice',
+        entityId: inv.id,
+        description: `Invoice ${inv.invoiceNumber} marked as OVERDUE`,
+      });
+    }
+
+    return {
+      message: `${result.count} invoice(s) marked as overdue`,
+      count: result.count,
+      invoices: overdueInvoices.map((i) => i.invoiceNumber),
+    };
+  }
+
+  async getOverdueSummary(companyId: string) {
+    const now = new Date();
+
+    const overdueInvoices = await this.prisma.invoice.findMany({
+      where: {
+        companyId,
+        status: { in: ['OVERDUE', 'SENT', 'PARTIAL'] },
+        dueDate: { lt: now },
+      },
+      include: {
+        customer: { select: { id: true, name: true } },
+      },
+      orderBy: { dueDate: 'asc' },
+    });
+
+    // Aging buckets
+    const buckets = { '1-30': [] as any[], '31-60': [] as any[], '61-90': [] as any[], '90+': [] as any[] };
+    let totalOverdue = new Decimal(0);
+
+    for (const inv of overdueInvoices) {
+      const balanceDue = new Decimal(inv.totalAmount).minus(new Decimal(inv.paidAmount));
+      const daysOverdue = Math.floor((now.getTime() - new Date(inv.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
+      totalOverdue = totalOverdue.plus(balanceDue);
+
+      const entry = {
+        id: inv.id,
+        invoiceNumber: inv.invoiceNumber,
+        customerName: inv.customer.name,
+        totalAmount: new Decimal(inv.totalAmount).toFixed(2),
+        balanceDue: balanceDue.toFixed(2),
+        dueDate: inv.dueDate,
+        daysOverdue,
+      };
+
+      if (daysOverdue <= 30) buckets['1-30'].push(entry);
+      else if (daysOverdue <= 60) buckets['31-60'].push(entry);
+      else if (daysOverdue <= 90) buckets['61-90'].push(entry);
+      else buckets['90+'].push(entry);
+    }
+
+    return {
+      totalOverdueCount: overdueInvoices.length,
+      totalOverdueAmount: totalOverdue.toFixed(2),
+      aging: {
+        '1-30': { count: buckets['1-30'].length, invoices: buckets['1-30'] },
+        '31-60': { count: buckets['31-60'].length, invoices: buckets['31-60'] },
+        '61-90': { count: buckets['61-90'].length, invoices: buckets['61-90'] },
+        '90+': { count: buckets['90+'].length, invoices: buckets['90+'] },
+      },
+    };
+  }
+
+  // ================================================================
+  // ENHANCED PAYMENT HISTORY
+  // ================================================================
+
+  async getPaymentHistory(invoiceId: string, companyId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id: invoiceId },
+      select: { id: true, companyId: true, invoiceNumber: true, totalAmount: true, paidAmount: true, status: true },
+    });
+
+    if (!invoice) throw new NotFoundException('Invoice not found');
+    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+
+    const payments = await this.prisma.payment.findMany({
+      where: { invoiceId },
+      orderBy: { paymentDate: 'desc' },
+    });
+
+    const balanceDue = new Decimal(invoice.totalAmount).minus(new Decimal(invoice.paidAmount));
+
+    return {
+      invoiceNumber: invoice.invoiceNumber,
+      totalAmount: new Decimal(invoice.totalAmount).toFixed(2),
+      paidAmount: new Decimal(invoice.paidAmount).toFixed(2),
+      balanceDue: balanceDue.toFixed(2),
+      status: invoice.status,
+      paymentCount: payments.length,
+      payments: payments.map((p) => ({
+        id: p.id,
+        amount: new Decimal(p.amount).toFixed(2),
+        paymentDate: p.paymentDate,
+        method: p.method,
+        reference: p.reference,
+        notes: p.notes,
+        journalEntryId: p.journalEntryId,
+      })),
+    };
   }
 }
