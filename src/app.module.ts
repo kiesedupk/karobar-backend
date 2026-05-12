@@ -1,4 +1,5 @@
-import { Module, NestModule, MiddlewareConsumer } from '@nestjs/common';
+import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { PrismaModule } from './prisma/prisma.module';
@@ -25,6 +26,14 @@ import { MailModule } from './modules/mail/mail.module';
     AccountingModule, JournalModule, InvoicesModule, ReportsModule,
     CustomersModule, VendorsModule, ExpensesModule, AuditModule,
     ScheduleModule.forRoot(), BankingModule, PeriodsModule, MailModule,
+    LoggerModule.forRoot({
+      pinoHttp: {
+        transport: process.env.NODE_ENV !== 'production'
+          ? { target: 'pino-pretty', options: { singleLine: true } }
+          : undefined,
+        autoLogging: true,
+      },
+    }),
   ],
   controllers: [AppController],
   providers: [AppService],

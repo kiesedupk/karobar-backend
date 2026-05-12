@@ -2,12 +2,27 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { ValidationPipe } from '@nestjs/common';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
+import { Logger } from 'nestjs-pino';
+import helmet from 'helmet';
+import * as compression from 'compression';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
   
-  // Enable CORS for frontend
-  app.enableCors();
+  // Use Pino for NestJS logging
+  app.useLogger(app.get(Logger));
+  
+  // Security Headers
+  app.use(helmet());
+  
+  // Response Compression
+  app.use(compression());
+  
+  // Enable CORS securely for frontend
+  app.enableCors({
+    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    credentials: true,
+  });
   
   // Global Validation Pipe for DTOs
   app.useGlobalPipes(new ValidationPipe({
