@@ -10,6 +10,8 @@ import { RecordPaymentDto } from './dto/record-payment.dto';
 import { Decimal } from '@prisma/client/runtime/library';
 import { AuditService } from '../../common/audit/audit.service';
 import { PeriodsService } from '../periods/periods.service';
+import { MailService } from '../mail/mail.service';
+import { generateInvoicePdfBuffer } from '../mail/invoice-pdf-generator';
 
 @Injectable()
 export class InvoicesService {
@@ -17,6 +19,7 @@ export class InvoicesService {
     private prisma: PrismaService,
     private auditService: AuditService,
     private periodsService: PeriodsService,
+    private mailService: MailService,
   ) {}
 
   // ================================================================
@@ -1108,5 +1111,56 @@ export class InvoicesService {
         journalEntryId: p.journalEntryId,
       })),
     };
+  }
+
+  async sendInvoiceByEmail(id: string, companyId: string) {
+    const invoice = await this.prisma.invoice.findUnique({
+      where: { id },
+      include: { customer: true, items: true },
+    });
+
+    if (!invoice || invoice.companyId !== companyId) {
+      throw new NotFoundException('Invoice not found');
+    }
+
+    if (!invoice.customer?.email) {
+      throw new BadRequestException('Customer does not have an email address');
+    }
+
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    
+    // 1. Generate PDF Buffer
+    const pdfBuffer = await generateInvoicePdfBuffer(invoice, company);
+
+    // 2. Prepare Email
+    const html = this.mailService.getInvoiceTemplate(invoice, company);
+    const subject = `Invoice ${invoice.invoiceNumber} from ${company.name}`;
+
+    // 3. Send Mail
+    await this.mailService.sendMail(invoice.customer.email, subject, html, [
+      {
+        filename: `${invoice.invoiceNumber}.pdf`,
+        content: pdfBuffer,
+      },
+    ]);
+
+    // 4. Update status to SENT if it was DRAFT
+    if (invoice.status === 'DRAFT') {
+      await this.prisma.invoice.update({
+        where: { id },
+        data: { status: 'SENT' },
+      });
+    }
+
+    // 5. Audit Log
+    this.auditService.log({
+      companyId,
+      action: 'SEND',
+      entity: 'Invoice',
+      entityId: id,
+      description: `Invoice ${invoice.invoiceNumber} sent to ${invoice.customer.email}`,
+    });
+
+    return { message: `Invoice sent successfully to ${invoice.customer.email}` };
   }
 }

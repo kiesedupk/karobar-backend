@@ -48,11 +48,14 @@ export class InvoicesController {
 
   @Permissions('invoice:read')
   @Get(':id')
-  getInvoice(
-    @Param('id') id: string,
-    @Query('companyId') companyId: string,
-  ) {
-    return this.invoicesService.getInvoice(id, companyId);
+  getInvoiceDetail(@Param('id') id: string, @Query('companyId') companyId: string) {
+    return this.invoicesService.getInvoiceDetail(id, companyId);
+  }
+
+  @Permissions('invoice:create')
+  @Post(':id/send')
+  sendInvoiceByEmail(@Param('id') id: string, @Query('companyId') companyId: string) {
+    return this.invoicesService.sendInvoiceByEmail(id, companyId);
   }
 
   @Permissions('invoice:read')
