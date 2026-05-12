@@ -53,7 +53,29 @@ async function main() {
       permissions: 'invoice:*,journal:*,report:*,expense:*,account:*',
     },
   });
-  console.log('✅ Roles: ADMIN, ACCOUNTANT');
+
+  const managerRole = await prisma.role.upsert({
+    where: { companyId_name: { companyId: company.id, name: 'MANAGER' } },
+    update: {},
+    create: {
+      companyId: company.id,
+      name: 'MANAGER',
+      description: 'Read-only oversight',
+      permissions: 'invoice:read,journal:read,report:read,expense:read,account:read',
+    },
+  });
+
+  const cashierRole = await prisma.role.upsert({
+    where: { companyId_name: { companyId: company.id, name: 'CASHIER' } },
+    update: {},
+    create: {
+      companyId: company.id,
+      name: 'CASHIER',
+      description: 'Day-to-day transaction processing',
+      permissions: 'invoice:create,invoice:read,expense:create,expense:read,journal:read',
+    },
+  });
+  console.log('✅ Roles: ADMIN, ACCOUNTANT, MANAGER, CASHIER');
 
   // ==========================================
   // 3. DEMO USERS
@@ -82,6 +104,28 @@ async function main() {
     },
   });
 
+  const managerUser = await prisma.user.upsert({
+    where: { email: 'manager@karobar.pk' },
+    update: {},
+    create: {
+      email: 'manager@karobar.pk',
+      password: passwordHash,
+      firstName: 'Tariq',
+      lastName: 'Mehmood',
+    },
+  });
+
+  const cashierUser = await prisma.user.upsert({
+    where: { email: 'cashier@karobar.pk' },
+    update: {},
+    create: {
+      email: 'cashier@karobar.pk',
+      password: passwordHash,
+      firstName: 'Usman',
+      lastName: 'Ali',
+    },
+  });
+
   // Link users to company
   await prisma.userCompany.upsert({
     where: { userId_companyId: { userId: adminUser.id, companyId: company.id } },
@@ -93,7 +137,17 @@ async function main() {
     update: {},
     create: { userId: accountantUser.id, companyId: company.id, roleId: accountantRole.id },
   });
-  console.log('✅ Users: admin@karobar.pk / accountant@karobar.pk (password: Demo@123)');
+  await prisma.userCompany.upsert({
+    where: { userId_companyId: { userId: managerUser.id, companyId: company.id } },
+    update: {},
+    create: { userId: managerUser.id, companyId: company.id, roleId: managerRole.id },
+  });
+  await prisma.userCompany.upsert({
+    where: { userId_companyId: { userId: cashierUser.id, companyId: company.id } },
+    update: {},
+    create: { userId: cashierUser.id, companyId: company.id, roleId: cashierRole.id },
+  });
+  console.log('✅ Users: admin, accountant, manager, cashier (password: Demo@123)');
 
   // ==========================================
   // 4. CHART OF ACCOUNTS (Pakistani Standard)
@@ -227,26 +281,31 @@ async function main() {
   const gstPayableId = await getAccId('2200');
 
   // Opening balance entry
-  const openingEntry = await prisma.journalEntry.create({
-    data: {
-      companyId: company.id,
-      date: new Date('2026-01-01'),
-      reference: 'OB-2026',
-      description: 'Opening Balances — FY 2026',
-      status: 'POSTED',
-      lines: {
-        create: [
-          { accountId: cashId, description: 'Opening cash', debit: 250000, credit: 0 },
-          { accountId: bankHblId, description: 'Opening HBL balance', debit: 1500000, credit: 0 },
-          { accountId: bankMeezanId, description: 'Opening Meezan balance', debit: 800000, credit: 0 },
-          { accountId: inventoryId, description: 'Opening inventory', debit: 2000000, credit: 0 },
-          { accountId: equipmentId, description: 'Office equipment', debit: 350000, credit: 0 },
-          { accountId: furnitureId, description: 'Furniture', debit: 200000, credit: 0 },
-          { accountId: capitalId, description: 'Owner capital investment', debit: 0, credit: 5100000 },
-        ],
-      },
-    },
+  const existingOB = await prisma.journalEntry.findFirst({
+    where: { companyId: company.id, reference: 'OB-2026' },
   });
+  if (!existingOB) {
+    await prisma.journalEntry.create({
+      data: {
+        companyId: company.id,
+        date: new Date('2026-01-01'),
+        reference: 'OB-2026',
+        description: 'Opening Balances — FY 2026',
+        status: 'POSTED',
+        lines: {
+          create: [
+            { accountId: cashId, description: 'Opening cash', debit: 250000, credit: 0 },
+            { accountId: bankHblId, description: 'Opening HBL balance', debit: 1500000, credit: 0 },
+            { accountId: bankMeezanId, description: 'Opening Meezan balance', debit: 800000, credit: 0 },
+            { accountId: inventoryId, description: 'Opening inventory', debit: 2000000, credit: 0 },
+            { accountId: equipmentId, description: 'Office equipment', debit: 350000, credit: 0 },
+            { accountId: furnitureId, description: 'Furniture', debit: 200000, credit: 0 },
+            { accountId: capitalId, description: 'Owner capital investment', debit: 0, credit: 5100000 },
+          ],
+        },
+      },
+    });
+  }
   console.log('✅ Opening Balance entry posted');
 
   // ==========================================
@@ -319,25 +378,30 @@ async function main() {
   ];
 
   for (const je of journalData) {
-    await prisma.journalEntry.create({
-      data: {
-        companyId: company.id,
-        date: new Date(je.date),
-        reference: je.ref,
-        description: je.desc,
-        status: 'POSTED',
-        lines: {
-          create: je.lines.map(l => ({
-            accountId: l.accountId,
-            description: l.desc,
-            debit: l.debit,
-            credit: l.credit,
-          })),
-        },
-      },
+    const existing = await prisma.journalEntry.findFirst({
+      where: { companyId: company.id, reference: je.ref },
     });
+    if (!existing) {
+      await prisma.journalEntry.create({
+        data: {
+          companyId: company.id,
+          date: new Date(je.date),
+          reference: je.ref,
+          description: je.desc,
+          status: 'POSTED',
+          lines: {
+            create: je.lines.map(l => ({
+              accountId: l.accountId,
+              description: l.desc,
+              debit: l.debit,
+              credit: l.credit,
+            })),
+          },
+        },
+      });
+    }
   }
-  console.log(`✅ Journal Entries: ${journalData.length + 1} entries posted`);
+  console.log(`✅ Journal Entries: ${journalData.length + 1} entries (skipped duplicates)`);
 
   // ==========================================
   // 9. DEMO INVOICES (with auto journal)
@@ -384,6 +448,12 @@ async function main() {
   ];
 
   for (const inv of invoicesData) {
+    // Skip if invoice already exists
+    const existingInv = await prisma.invoice.findFirst({
+      where: { companyId: company.id, invoiceNumber: inv.number },
+    });
+    if (existingInv) continue;
+
     let subTotal = 0;
     let totalTax = 0;
     const calcItems = inv.items.map(item => {
@@ -407,23 +477,28 @@ async function main() {
     // Create journal entry for non-draft invoices
     let journalEntryId: string | null = null;
     if (inv.status !== 'DRAFT') {
-      const je = await prisma.journalEntry.create({
-        data: {
-          companyId: company.id,
-          date: new Date(inv.date),
-          reference: `INV-${inv.number}`,
-          description: `Sales Invoice ${inv.number} — ${inv.customer.name}`,
-          status: 'POSTED',
-          lines: {
-            create: [
-              { accountId: receivableId, description: `Invoice ${inv.number}`, debit: totalAmount, credit: 0 },
-              { accountId: salesRevId, description: `Revenue ${inv.number}`, debit: 0, credit: subTotal },
-              { accountId: gstPayableId, description: `GST ${inv.number}`, debit: 0, credit: totalTax },
-            ],
-          },
-        },
+      const existingJE = await prisma.journalEntry.findFirst({
+        where: { companyId: company.id, reference: `INV-${inv.number}` },
       });
-      journalEntryId = je.id;
+      if (!existingJE) {
+        const je = await prisma.journalEntry.create({
+          data: {
+            companyId: company.id,
+            date: new Date(inv.date),
+            reference: `INV-${inv.number}`,
+            description: `Sales Invoice ${inv.number} — ${inv.customer.name}`,
+            status: 'POSTED',
+            lines: {
+              create: [
+                { accountId: receivableId, description: `Invoice ${inv.number}`, debit: totalAmount, credit: 0 },
+                { accountId: salesRevId, description: `Revenue ${inv.number}`, debit: 0, credit: subTotal },
+                { accountId: gstPayableId, description: `GST ${inv.number}`, debit: 0, credit: totalTax },
+              ],
+            },
+          },
+        });
+        journalEntryId = je.id;
+      }
     }
 
     await prisma.invoice.create({
@@ -444,7 +519,7 @@ async function main() {
       },
     });
   }
-  console.log(`✅ Invoices: ${invoicesData.length} demo invoices`);
+  console.log(`✅ Invoices: ${invoicesData.length} demo invoices (skipped duplicates)`);
 
   // ==========================================
   // 10. UPDATE ACCOUNT BALANCES (from all posted entries)
@@ -484,6 +559,8 @@ async function main() {
   console.log(`Company:   ${company.name}`);
   console.log(`Admin:     admin@karobar.pk / Demo@123`);
   console.log(`Accountant: accountant@karobar.pk / Demo@123`);
+  console.log(`Manager:   manager@karobar.pk / Demo@123`);
+  console.log(`Cashier:   cashier@karobar.pk / Demo@123`);
   console.log(`Accounts:  ${accountsData.length}`);
   console.log(`Customers: ${customers.length}`);
   console.log(`Vendors:   ${vendors.length}`);

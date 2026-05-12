@@ -60,6 +60,7 @@ export class AuthService {
           companyId: c.company.id,
           companyName: c.company.name,
           role: c.role.name,
+          permissions: c.role.permissions ? c.role.permissions.split(',') : [],
         })),
       },
       tokens: {

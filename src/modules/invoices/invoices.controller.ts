@@ -14,7 +14,7 @@ import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
 @Controller('invoices')
@@ -25,7 +25,7 @@ export class InvoicesController {
    * POST /invoices
    * Create a new draft invoice with line items, taxes, and discounts.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'CASHIER')
+  @Permissions('invoice:create')
   @Post()
   createInvoice(@Body() dto: CreateInvoiceDto) {
     return this.invoicesService.createInvoice(dto);
@@ -35,7 +35,7 @@ export class InvoicesController {
    * GET /invoices?companyId=xxx&status=SENT&customerId=xxx&page=1&limit=20
    * List invoices with pagination and filters.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('invoice:read')
   @Get()
   listInvoices(
     @Query('companyId') companyId: string,
@@ -51,7 +51,7 @@ export class InvoicesController {
    * GET /invoices/:id?companyId=xxx
    * Get a single invoice with all items and payment history.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('invoice:read')
   @Get(':id')
   getInvoice(
     @Param('id') id: string,
@@ -64,7 +64,7 @@ export class InvoicesController {
    * GET /invoices/:id/pdf?companyId=xxx
    * Get invoice data structured for PDF rendering.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('invoice:read')
   @Get(':id/pdf')
   getInvoicePdfData(
     @Param('id') id: string,
@@ -78,7 +78,7 @@ export class InvoicesController {
    * Mark invoice as SENT and optionally auto-post journal entry.
    * Pass receivableAccountId, revenueAccountId, taxAccountId in body.
    */
-  @Roles('ADMIN', 'ACCOUNTANT')
+  @Permissions('invoice:send')
   @Post(':id/send')
   sendInvoice(
     @Param('id') id: string,
@@ -97,7 +97,7 @@ export class InvoicesController {
    * POST /invoices/:id/cancel?companyId=xxx
    * Cancel an invoice and void its journal entry.
    */
-  @Roles('ADMIN')
+  @Permissions('invoice:delete')
   @Post(':id/cancel')
   cancelInvoice(
     @Param('id') id: string,
@@ -111,7 +111,7 @@ export class InvoicesController {
    * Record a payment against an invoice.
    * Optionally auto-posts a journal entry (Debit Cash/Bank, Credit Receivable).
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'CASHIER')
+  @Permissions('invoice:create')
   @Post('payments')
   recordPayment(@Body() dto: RecordPaymentDto) {
     return this.invoicesService.recordPayment(dto);

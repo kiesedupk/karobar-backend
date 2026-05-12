@@ -8,7 +8,7 @@ import {
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
 @Controller('reports')
@@ -19,7 +19,7 @@ export class ReportsController {
    * GET /reports/trial-balance?companyId=xxx&startDate=2026-01-01&endDate=2026-12-31
    * Trial Balance — verifies Total Debits = Total Credits.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get('trial-balance')
   getTrialBalance(
     @Query('companyId') companyId: string,
@@ -33,7 +33,7 @@ export class ReportsController {
    * GET /reports/profit-loss?companyId=xxx&startDate=2026-01-01&endDate=2026-12-31
    * Profit & Loss (Income Statement) — Revenue minus Expenses = Net Income.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get('profit-loss')
   getProfitAndLoss(
     @Query('companyId') companyId: string,
@@ -47,7 +47,7 @@ export class ReportsController {
    * GET /reports/balance-sheet?companyId=xxx&endDate=2026-12-31
    * Balance Sheet — Assets = Liabilities + Equity.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get('balance-sheet')
   getBalanceSheet(
     @Query('companyId') companyId: string,
@@ -61,7 +61,7 @@ export class ReportsController {
    * GET /reports/cash-flow?companyId=xxx&startDate=2026-01-01&endDate=2026-12-31
    * Cash Flow Statement — Operating + Investing + Financing activities.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get('cash-flow')
   getCashFlowStatement(
     @Query('companyId') companyId: string,
@@ -75,7 +75,7 @@ export class ReportsController {
    * GET /reports/ledger/:accountId?companyId=xxx&startDate=...&endDate=...
    * Account Ledger — detailed transaction history with running balance.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get('ledger/:accountId')
   getAccountLedger(
     @Param('accountId') accountId: string,

@@ -7,20 +7,20 @@ import { CustomersService } from './customers.service';
 import { CreateCustomerDto, UpdateCustomerDto } from './dto/customer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
 @Controller('customers')
 export class CustomersController {
   constructor(private readonly customersService: CustomersService) {}
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('customer:create')
   @Post()
   create(@Body() dto: CreateCustomerDto) {
     return this.customersService.create(dto);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('customer:read')
   @Get()
   findAll(
     @Query('companyId') companyId: string,
@@ -31,13 +31,13 @@ export class CustomersController {
     return this.customersService.findAll(companyId, page, limit, search);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('customer:read')
   @Get(':id')
   findOne(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.customersService.findOne(id, companyId);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('customer:update')
   @Put(':id')
   update(
     @Param('id') id: string,
@@ -47,13 +47,13 @@ export class CustomersController {
     return this.customersService.update(id, companyId, dto);
   }
 
-  @Roles('ADMIN')
+  @Permissions('customer:delete')
   @Delete(':id')
   remove(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.customersService.remove(id, companyId);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get(':id/statement')
   getStatement(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.customersService.getStatement(id, companyId);

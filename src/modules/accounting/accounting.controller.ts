@@ -14,7 +14,7 @@ import { CreateAccountDto } from './dto/create-account.dto';
 import { UpdateAccountDto } from './dto/update-account.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
 @Controller('accounting')
@@ -30,7 +30,7 @@ export class AccountingController {
    * Create a new account in the Chart of Accounts
    * Requires: ADMIN or ACCOUNTANT role
    */
-  @Roles('ADMIN', 'ACCOUNTANT')
+  @Permissions('account:create')
   @Post('accounts')
   createAccount(@Body() createAccountDto: CreateAccountDto) {
     return this.accountingService.createAccount(createAccountDto);
@@ -41,7 +41,7 @@ export class AccountingController {
    * Update an existing account
    * Requires: ADMIN or ACCOUNTANT role
    */
-  @Roles('ADMIN', 'ACCOUNTANT')
+  @Permissions('account:update')
   @Put('accounts/:id')
   updateAccount(
     @Param('id') id: string,
@@ -56,7 +56,7 @@ export class AccountingController {
    * Delete an account (only if it has no journal entries or children)
    * Requires: ADMIN role only
    */
-  @Roles('ADMIN')
+  @Permissions('account:delete')
   @Delete('accounts/:id')
   deleteAccount(
     @Param('id') id: string,
@@ -70,7 +70,7 @@ export class AccountingController {
    * Get a single account with parent/children details
    * Requires: ADMIN, ACCOUNTANT, or MANAGER role
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('account:read')
   @Get('accounts/:id')
   getAccount(
     @Param('id') id: string,
@@ -84,7 +84,7 @@ export class AccountingController {
    * Get full Chart of Accounts (flat list sorted by code)
    * Requires: ADMIN, ACCOUNTANT, or MANAGER role
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('account:read')
   @Get('accounts')
   getChartOfAccounts(@Query('companyId') companyId: string) {
     return this.accountingService.getChartOfAccounts(companyId);
@@ -98,7 +98,7 @@ export class AccountingController {
    * GET /accounting/accounts-tree?companyId=xxx
    * Get hierarchical tree of all accounts
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('account:read')
   @Get('accounts-tree')
   getChartOfAccountsTree(@Query('companyId') companyId: string) {
     return this.accountingService.getChartOfAccountsTree(companyId);
@@ -108,7 +108,7 @@ export class AccountingController {
    * GET /accounting/accounts/:id/balance?companyId=xxx
    * Get computed balance for a specific account
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('account:read')
   @Get('accounts/:id/balance')
   getAccountBalance(
     @Param('id') id: string,
@@ -122,7 +122,7 @@ export class AccountingController {
    * Seed default Chart of Accounts for a new company
    * Requires: ADMIN role only
    */
-  @Roles('ADMIN')
+  @Permissions('account:create')
   @Post('seed')
   seedDefaultAccounts(@Query('companyId') companyId: string) {
     return this.accountingService.seedDefaultAccounts(companyId);

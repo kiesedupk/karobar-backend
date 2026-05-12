@@ -2,7 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AuditService } from './audit.service';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../guards/tenant-role.guard';
-import { Roles } from '../decorators/roles.decorator';
+import { Permissions } from '../decorators/permissions.decorator';
 
 @Controller('audit-logs')
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
@@ -10,7 +10,7 @@ export class AuditController {
   constructor(private readonly auditService: AuditService) {}
 
   @Get()
-  @Roles('ADMIN')
+  @Permissions('audit:read')
   findAll(
     @Query('companyId') companyId: string,
     @Query('page') page?: string,

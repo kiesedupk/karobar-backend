@@ -14,7 +14,7 @@ import { JournalService } from './journal.service';
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
 @Controller('journal')
@@ -30,7 +30,7 @@ export class JournalController {
    * Create a new journal entry with balanced debit/credit lines.
    * The golden rule is enforced: Total Debits = Total Credits.
    */
-  @Roles('ADMIN', 'ACCOUNTANT')
+  @Permissions('journal:create')
   @Post('entries')
   createJournalEntry(@Body() dto: CreateJournalEntryDto) {
     return this.journalService.createJournalEntry(dto);
@@ -40,7 +40,7 @@ export class JournalController {
    * GET /journal/entries?companyId=xxx&page=1&limit=20&status=POSTED&startDate=...&endDate=...
    * List journal entries with pagination and optional filters.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('journal:read')
   @Get('entries')
   listJournalEntries(
     @Query('companyId') companyId: string,
@@ -63,7 +63,7 @@ export class JournalController {
    * GET /journal/entries/:id?companyId=xxx
    * Get a single journal entry with all its lines and account details.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('journal:read')
   @Get('entries/:id')
   getJournalEntry(
     @Param('id') id: string,
@@ -76,7 +76,7 @@ export class JournalController {
    * POST /journal/entries/:id/post?companyId=xxx
    * Post a DRAFT journal entry — makes it permanent and updates account balances.
    */
-  @Roles('ADMIN', 'ACCOUNTANT')
+  @Permissions('journal:post')
   @Post('entries/:id/post')
   postJournalEntry(
     @Param('id') id: string,
@@ -90,7 +90,7 @@ export class JournalController {
    * Void a POSTED journal entry — reverses account balances.
    * Accounting-safe: entries are never deleted, only voided.
    */
-  @Roles('ADMIN')
+  @Permissions('journal:delete')
   @Post('entries/:id/void')
   voidJournalEntry(
     @Param('id') id: string,
@@ -103,7 +103,7 @@ export class JournalController {
    * DELETE /journal/entries/:id?companyId=xxx
    * Delete a DRAFT journal entry only. Posted entries must be voided.
    */
-  @Roles('ADMIN', 'ACCOUNTANT')
+  @Permissions('journal:delete')
   @Delete('entries/:id')
   deleteDraftEntry(
     @Param('id') id: string,
@@ -121,7 +121,7 @@ export class JournalController {
    * Generate a Trial Balance report.
    * Verifies the fundamental equation: Total Debits = Total Credits.
    */
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('report:read')
   @Get('trial-balance')
   getTrialBalance(@Query('companyId') companyId: string) {
     return this.journalService.getTrialBalance(companyId);

@@ -7,20 +7,20 @@ import { VendorsService } from './vendors.service';
 import { CreateVendorDto, UpdateVendorDto } from './dto/vendor.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
-import { Roles } from '../../common/decorators/roles.decorator';
+import { Permissions } from '../../common/decorators/permissions.decorator';
 
 @UseGuards(JwtAuthGuard, TenantRoleGuard)
 @Controller('vendors')
 export class VendorsController {
   constructor(private readonly vendorsService: VendorsService) {}
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('vendor:create')
   @Post()
   create(@Body() dto: CreateVendorDto) {
     return this.vendorsService.create(dto);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('vendor:read')
   @Get()
   findAll(
     @Query('companyId') companyId: string,
@@ -31,13 +31,13 @@ export class VendorsController {
     return this.vendorsService.findAll(companyId, page, limit, search);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER', 'CASHIER')
+  @Permissions('vendor:read')
   @Get(':id')
   findOne(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.vendorsService.findOne(id, companyId);
   }
 
-  @Roles('ADMIN', 'ACCOUNTANT', 'MANAGER')
+  @Permissions('vendor:update')
   @Put(':id')
   update(
     @Param('id') id: string,
@@ -47,7 +47,7 @@ export class VendorsController {
     return this.vendorsService.update(id, companyId, dto);
   }
 
-  @Roles('ADMIN')
+  @Permissions('vendor:delete')
   @Delete(':id')
   remove(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.vendorsService.remove(id, companyId);
