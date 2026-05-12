@@ -7,10 +7,14 @@ import {
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateJournalEntryDto } from './dto/create-journal-entry.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { AuditService } from '../../common/audit/audit.service';
 
 @Injectable()
 export class JournalService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   // ================================================================
   // 1. CREATE JOURNAL ENTRY (The Heart of Double-Entry Accounting)
@@ -133,7 +137,7 @@ export class JournalService {
         await this.updateAccountBalances(tx, lines);
       }
 
-      return {
+      const result = {
         ...journalEntry,
         summary: {
           totalDebits: debitsDecimal.toFixed(2),
@@ -142,6 +146,17 @@ export class JournalService {
           lineCount: lines.length,
         },
       };
+
+      // Audit Log
+      this.auditService.log({
+        companyId,
+        action: journalEntry.status === 'POSTED' ? 'POST' : 'CREATE',
+        entity: 'JournalEntry',
+        entityId: journalEntry.id,
+        description: `Journal entry ${reference || journalEntry.id} ${journalEntry.status === 'POSTED' ? 'posted' : 'created as draft'} — Rs ${debitsDecimal.toFixed(2)}`,
+      });
+
+      return result;
     });
   }
 
@@ -286,6 +301,15 @@ export class JournalService {
             },
           },
         },
+      });
+
+      // Audit Log
+      this.auditService.log({
+        companyId,
+        action: 'VOID',
+        entity: 'JournalEntry',
+        entityId: id,
+        description: `Journal entry "${entry.reference || entry.id}" voided`,
       });
 
       return {

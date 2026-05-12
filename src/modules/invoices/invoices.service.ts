@@ -8,10 +8,14 @@ import { PrismaService } from '../../prisma/prisma.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { AuditService } from '../../common/audit/audit.service';
 
 @Injectable()
 export class InvoicesService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private auditService: AuditService,
+  ) {}
 
   // ================================================================
   // 1. CREATE INVOICE
@@ -224,7 +228,7 @@ export class InvoicesService {
         },
       });
 
-      return {
+      const result = {
         ...invoice,
         journalEntryId: journalEntry.id,
         financials: {
@@ -236,6 +240,17 @@ export class InvoicesService {
           balanceDue: totalAmount.toFixed(2),
         },
       };
+
+      // Audit Log
+      this.auditService.log({
+        companyId,
+        action: 'CREATE',
+        entity: 'Invoice',
+        entityId: invoice.id,
+        description: `Invoice ${invoiceNumber} created for ${customer.name} — Rs ${totalAmount.toFixed(2)}`,
+      });
+
+      return result;
     });
   }
 

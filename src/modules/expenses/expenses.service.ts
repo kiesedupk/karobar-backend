@@ -2,10 +2,14 @@ import { Injectable, NotFoundException, BadRequestException } from '@nestjs/comm
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateExpenseDto } from './dto/create-expense.dto';
 import { Decimal } from '@prisma/client/runtime/library';
+import { AuditService } from '../../common/audit/audit.service';
 
 @Injectable()
 export class ExpensesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly auditService: AuditService,
+  ) {}
 
   async createExpense(dto: CreateExpenseDto) {
     const { companyId, expenseAccountId, paymentAccountId, vendorId, amount, description, date, referenceNumber } = dto;
@@ -94,6 +98,15 @@ export class ExpensesService {
           description,
           status: 'PAID',
         },
+      });
+
+      // 8. Audit Log
+      this.auditService.log({
+        companyId,
+        action: 'CREATE',
+        entity: 'Expense',
+        entityId: expense.id,
+        description: `Expense recorded: ${description} — Rs ${amount}`,
       });
 
       return expense;

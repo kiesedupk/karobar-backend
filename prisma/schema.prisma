@@ -30,6 +30,7 @@ model Company {
   vendors        Vendor[]
   invoices       Invoice[]
   expenses       Expense[]
+  auditLogs      AuditLog[]
 }
 
 model User {
@@ -275,4 +276,29 @@ model Expense {
   @@index([companyId])
   @@index([vendorId])
   @@index([status])
+}
+
+// ==========================================
+// 6. Audit Logging
+// ==========================================
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String?  // Who performed the action
+  action      String   // CREATE, UPDATE, DELETE, VOID, POST, LOGIN
+  entity      String   // Invoice, Expense, JournalEntry, Account, etc.
+  entityId    String?  // ID of the affected record
+  description String   // Human-readable summary
+  changes     String?  // JSON: { field: { old, new } }
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([entity, entityId])
+  @@index([createdAt])
 }
