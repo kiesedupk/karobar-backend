@@ -5,9 +5,9 @@ export async function generateInvoicePdfBuffer(invoice: any, company: any): Prom
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const chunks: Buffer[] = [];
 
-    doc.on('data', (chunk) => chunks.push(chunk));
+    doc.on('data', (chunk: any) => chunks.push(chunk));
     doc.on('end', () => resolve(Buffer.concat(chunks)));
-    doc.on('error', (err) => reject(err));
+    doc.on('error', (err: any) => reject(err));
 
     const primaryColor = '#003d9b';
     const secondaryColor = '#434654';
@@ -56,7 +56,7 @@ export async function generateInvoicePdfBuffer(invoice: any, company: any): Prom
     let rowY = tableTop + 25;
     doc.fillColor('#333333').font('Helvetica');
     
-    (invoice.items || []).forEach((item, i) => {
+    (invoice.items || []).forEach((item: any, i: number) => {
       // Draw zebra striping
       if (i % 2 === 1) {
         doc.rect(50, rowY - 2, 500, 15).fill('#F9FAFB');
