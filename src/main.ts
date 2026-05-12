@@ -4,7 +4,7 @@ import { ValidationPipe } from '@nestjs/common';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
-import * as compression from 'compression';
+import compression from 'compression';
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
