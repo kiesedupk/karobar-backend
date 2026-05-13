@@ -22,6 +22,8 @@ import { MailModule } from './modules/mail/mail.module';
 import { ProductsModule } from './modules/products/products.module';
 import { ProductCategoriesModule } from './modules/product-categories/product-categories.module';
 import { UnitsOfMeasureModule } from './modules/units-of-measure/units-of-measure.module';
+import { WarehousesModule } from './modules/warehouses/warehouses.module';
+import { WarehouseTransfersModule } from './modules/warehouse-transfers/warehouse-transfers.module';
 
 @Module({
   imports: [
@@ -40,6 +42,8 @@ import { UnitsOfMeasureModule } from './modules/units-of-measure/units-of-measur
     ProductsModule,
     ProductCategoriesModule,
     UnitsOfMeasureModule,
+    WarehousesModule,
+    WarehouseTransfersModule,
   ],
   controllers: [AppController],
   providers: [AppService],
