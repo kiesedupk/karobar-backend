@@ -25,6 +25,7 @@ import { UnitsOfMeasureModule } from './modules/units-of-measure/units-of-measur
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { WarehouseTransfersModule } from './modules/warehouse-transfers/warehouse-transfers.module';
 import { StockTransactionsModule } from './modules/stock-transactions/stock-transactions.module';
+import { PurchaseBillsModule } from './modules/purchase-bills/purchase-bills.module';
 
 @Module({
   imports: [
@@ -46,6 +47,7 @@ import { StockTransactionsModule } from './modules/stock-transactions/stock-tran
     WarehousesModule,
     WarehouseTransfersModule,
     StockTransactionsModule,
+    PurchaseBillsModule,
   ],
   controllers: [AppController],
   providers: [AppService],

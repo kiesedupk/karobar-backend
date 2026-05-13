@@ -44,6 +44,7 @@ model Company {
   warehouseStocks    WarehouseStock[]
   warehouseTransfers WarehouseTransfer[]
   stockTransactions  StockTransaction[]
+  purchaseBills      PurchaseBill[]
 }
 
 // ==========================================
@@ -319,6 +320,7 @@ model Vendor {
 
   company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
   expenses Expense[]
+  purchaseBills PurchaseBill[]
 
   @@index([companyId])
 }
@@ -561,6 +563,7 @@ model Product {
   warehouseStocks    WarehouseStock[]
   transferItems      WarehouseTransferItem[]
   stockTransactions  StockTransaction[]
+  purchaseBillItems  PurchaseBillItem[]
 }
 
 // ==========================================
@@ -671,4 +674,55 @@ model StockTransaction {
   @@index([type])
   @@index([transactionDate])
   @@index([sourceType, sourceId])
+}
+
+// ==========================================
+// 13. Purchase Bills (Inventory Integration)
+// ==========================================
+
+model PurchaseBill {
+  id              String   @id @default(uuid())
+  companyId       String
+  vendorId        String?
+  warehouseId     String    // Target warehouse for stock
+  journalEntryId  String?   // Link to auto-posted journal entry
+  billNumber      String
+  billDate        DateTime  @default(now())
+  dueDate         DateTime?
+  subTotal        Decimal   @default(0)
+  taxAmount       Decimal   @default(0)
+  totalAmount     Decimal   @default(0)
+  paidAmount      Decimal   @default(0)
+  status          String    @default("RECEIVED") // DRAFT, RECEIVED, PAID, CANCELLED
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor   Vendor?  @relation(fields: [vendorId], references: [id])
+  items    PurchaseBillItem[]
+
+  @@unique([companyId, billNumber])
+  @@index([companyId])
+  @@index([vendorId])
+  @@index([status])
+}
+
+model PurchaseBillItem {
+  id             String   @id @default(uuid())
+  billId         String
+  productId      String
+  description    String?
+  quantity       Decimal  @default(1)
+  unitCost       Decimal
+  taxRate        Decimal  @default(0)
+  taxAmount      Decimal  @default(0)
+  totalAmount    Decimal
+  createdAt      DateTime @default(now())
+
+  bill    PurchaseBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  product Product      @relation(fields: [productId], references: [id])
+
+  @@index([billId])
+  @@index([productId])
 }
