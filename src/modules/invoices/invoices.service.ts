@@ -304,9 +304,62 @@ export class InvoicesService {
               },
             });
 
-            // Calculate COGS for this item (quantity × costPrice)
-            const costPrice = product.costPrice ? new Decimal(product.costPrice) : new Decimal(0);
-            totalCOGS = totalCOGS.plus(qty.mul(costPrice));
+            // ==========================================
+            // FIFO COGS CALCULATION
+            // ==========================================
+            let remainingQtyToDeduct = new Decimal(item.quantity);
+            let itemCOGS = new Decimal(0);
+
+            // Fetch available FIFO layers for this product/warehouse ordered by acquiredAt ASC (oldest first)
+            const availableLayers = await tx.inventoryFifoLayer.findMany({
+              where: {
+                companyId,
+                warehouseId: dto.warehouseId!,
+                productId: item.productId!,
+                remainingQty: { gt: 0 },
+              },
+              orderBy: { acquiredAt: 'asc' },
+            });
+
+            for (const layer of availableLayers) {
+              if (remainingQtyToDeduct.lessThanOrEqualTo(0)) break;
+
+              const layerRemaining = new Decimal(layer.remainingQty);
+              const deductQty = Decimal.min(remainingQtyToDeduct, layerRemaining);
+              const layerCost = new Decimal(layer.unitCost);
+              const costForDeductedQty = deductQty.mul(layerCost);
+
+              // Update layer remaining quantity
+              await tx.inventoryFifoLayer.update({
+                where: { id: layer.id },
+                data: { remainingQty: layerRemaining.minus(deductQty) },
+              });
+
+              // Create Consumption Record
+              await tx.inventoryFifoConsumption.create({
+                data: {
+                  companyId,
+                  fifoLayerId: layer.id,
+                  transactionType: 'SALE',
+                  transactionId: invoice.id,
+                  quantityConsumed: deductQty,
+                  unitCost: layerCost,
+                  totalCost: costForDeductedQty,
+                },
+              });
+
+              itemCOGS = itemCOGS.plus(costForDeductedQty);
+              remainingQtyToDeduct = remainingQtyToDeduct.minus(deductQty);
+            }
+
+            // Fallback for missing layers
+            if (remainingQtyToDeduct.greaterThan(0)) {
+              const fallbackCost = product.costPrice ? new Decimal(product.costPrice) : new Decimal(0);
+              const fallbackCOGS = remainingQtyToDeduct.mul(fallbackCost);
+              itemCOGS = itemCOGS.plus(fallbackCOGS);
+            }
+
+            totalCOGS = totalCOGS.plus(itemCOGS);
           }
 
           // Create COGS Journal Entry (Dr: COGS, Cr: Inventory Asset)
@@ -805,6 +858,89 @@ export class InvoicesService {
             },
           },
         });
+      }
+
+      // Reverse Inventory if applicable
+      if (invoice.warehouseId) {
+        // Find consumptions to know exactly what was deducted
+        const consumptions = await tx.inventoryFifoConsumption.findMany({
+          where: { transactionId: invoice.id, transactionType: 'SALE' },
+          include: { layer: true },
+        });
+
+        // Group consumptions by product to update aggregate stock
+        const productReturns = new Map<string, Decimal>();
+
+        for (const consumption of consumptions) {
+          const qty = new Decimal(consumption.quantityConsumed);
+          const productId = consumption.layer.productId;
+
+          // 1. Create a new FIFO layer for the returned stock
+          await tx.inventoryFifoLayer.create({
+            data: {
+              companyId,
+              warehouseId: invoice.warehouseId,
+              productId,
+              unitCost: new Decimal(consumption.unitCost),
+              originalQty: qty,
+              remainingQty: qty,
+              sourceType: 'RETURN',
+              sourceId: invoice.id,
+            },
+          });
+
+          const currentTotal = productReturns.get(productId) || new Decimal(0);
+          productReturns.set(productId, currentTotal.plus(qty));
+        }
+
+        for (const [productId, qtyReturned] of productReturns) {
+          // 2. Add to WarehouseStock
+          const existingStock = await tx.warehouseStock.findUnique({
+            where: { warehouseId_productId: { warehouseId: invoice.warehouseId, productId } },
+          });
+
+          const previousQty = existingStock ? Number(existingStock.quantity) : 0;
+          const newQty = previousQty + Number(qtyReturned);
+
+          if (existingStock) {
+            await tx.warehouseStock.update({
+              where: { id: existingStock.id },
+              data: { quantity: newQty },
+            });
+          } else {
+            await tx.warehouseStock.create({
+              data: {
+                companyId,
+                warehouseId: invoice.warehouseId,
+                productId,
+                quantity: newQty,
+              },
+            });
+          }
+
+          // 3. Add to Product.currentStock
+          await tx.product.update({
+            where: { id: productId },
+            data: { currentStock: { increment: Number(qtyReturned) } },
+          });
+
+          // 4. Create StockTransaction
+          await tx.stockTransaction.create({
+            data: {
+              companyId,
+              warehouseId: invoice.warehouseId,
+              productId,
+              type: 'STOCK_IN',
+              quantity: Number(qtyReturned),
+              previousQty,
+              newQty,
+              reference: `CANCEL-${invoice.invoiceNumber}`,
+              sourceType: 'SALE', // Originally a sale
+              sourceId: invoice.id,
+              notes: `Invoice Cancellation: ${invoice.invoiceNumber}`,
+            },
+          });
+        }
       }
 
       const cancelled = await tx.invoice.update({

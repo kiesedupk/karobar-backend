@@ -235,6 +235,20 @@ export class PurchaseBillsService {
             notes: `Purchase Bill #${billNumber}`,
           },
         });
+
+        // D4. Create FIFO Layer
+        await tx.inventoryFifoLayer.create({
+          data: {
+            companyId,
+            warehouseId,
+            productId: item.productId,
+            unitCost: new Decimal(item.unitCost),
+            originalQty: new Decimal(item.quantity),
+            remainingQty: new Decimal(item.quantity),
+            sourceType: 'PURCHASE',
+            sourceId: bill.id,
+          },
+        });
       }
 
       // E. Audit Log
