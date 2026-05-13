@@ -214,11 +214,13 @@ export class InvoicesService {
           taxAmount: totalTax,
           totalAmount,
           paidAmount: new Decimal(0),
-          status: 'SENT', // Marks automatically as SENT instead of DRAFT because journal entry is posted!
+          status: 'SENT',
           notes: notes || null,
           journalEntryId: journalEntry.id,
+          warehouseId: dto.warehouseId || null,
           items: {
-            create: calculatedItems.map((ci) => ({
+            create: calculatedItems.map((ci, idx) => ({
+              productId: items[idx].productId || null,
               description: ci.description,
               quantity: ci.quantity,
               unitPrice: ci.unitPrice,
@@ -235,6 +237,144 @@ export class InvoicesService {
           items: true,
         },
       });
+
+      // ============================================================
+      // 5. INVENTORY DEDUCTION — Deduct stock if warehouse is specified
+      // ============================================================
+      if (dto.warehouseId) {
+        const productItems = items.filter(item => item.productId);
+
+        if (productItems.length > 0) {
+          let totalCOGS = new Decimal(0);
+
+          for (const item of productItems) {
+            // Verify product
+            const product = await tx.product.findFirst({
+              where: { id: item.productId, companyId },
+            });
+            if (!product) continue;
+
+            const qty = new Decimal(item.quantity);
+
+            // Check warehouse stock
+            const warehouseStock = await tx.warehouseStock.findUnique({
+              where: {
+                warehouseId_productId: {
+                  warehouseId: dto.warehouseId!,
+                  productId: item.productId!,
+                },
+              },
+            });
+
+            const previousQty = warehouseStock ? Number(warehouseStock.quantity) : 0;
+            if (previousQty < Number(qty)) {
+              throw new BadRequestException(
+                `Insufficient stock for "${product.name}". Available: ${previousQty}, Required: ${Number(qty)}`,
+              );
+            }
+
+            const newQty = previousQty - Number(qty);
+
+            // Deduct from warehouse stock
+            await tx.warehouseStock.update({
+              where: { id: warehouseStock!.id },
+              data: { quantity: newQty },
+            });
+
+            // Deduct from product total stock
+            await tx.product.update({
+              where: { id: item.productId },
+              data: { currentStock: { decrement: Number(qty) } },
+            });
+
+            // Record stock transaction
+            await tx.stockTransaction.create({
+              data: {
+                companyId,
+                warehouseId: dto.warehouseId!,
+                productId: item.productId!,
+                type: 'STOCK_OUT',
+                quantity: -Number(qty),
+                previousQty,
+                newQty,
+                reference: `INV-${invoiceNumber}`,
+                sourceType: 'SALE',
+                sourceId: invoice.id,
+                notes: `Invoice ${invoiceNumber} — ${customer.name}`,
+              },
+            });
+
+            // Calculate COGS for this item (quantity × costPrice)
+            const costPrice = product.costPrice ? new Decimal(product.costPrice) : new Decimal(0);
+            totalCOGS = totalCOGS.plus(qty.mul(costPrice));
+          }
+
+          // Create COGS Journal Entry (Dr: COGS, Cr: Inventory Asset)
+          if (totalCOGS.greaterThan(0)) {
+            let cogsAccountId: string | null = null;
+            let inventoryAssetAccountId: string | null = null;
+
+            // Find COGS account
+            const cogsAcc = await tx.account.findFirst({
+              where: { companyId, OR: [{ subType: 'COGS' }, { code: '5010' }] },
+            });
+            if (cogsAcc) cogsAccountId = cogsAcc.id;
+
+            // Find Inventory Asset account
+            const invAcc = await tx.account.findFirst({
+              where: { companyId, OR: [{ subType: 'INVENTORY' }, { code: '1030' }] },
+            });
+            if (invAcc) inventoryAssetAccountId = invAcc.id;
+
+            if (cogsAccountId && inventoryAssetAccountId) {
+              const cogsJournal = await tx.journalEntry.create({
+                data: {
+                  companyId,
+                  date: dto.issueDate ? new Date(dto.issueDate) : new Date(),
+                  reference: `COGS-${invoiceNumber}`,
+                  description: `Cost of Goods Sold — Invoice ${invoiceNumber}`,
+                  status: 'POSTED',
+                  lines: {
+                    create: [
+                      {
+                        accountId: cogsAccountId,
+                        description: `COGS for Invoice ${invoiceNumber}`,
+                        debit: totalCOGS,
+                        credit: new Decimal(0),
+                      },
+                      {
+                        accountId: inventoryAssetAccountId,
+                        description: `Inventory reduction — Invoice ${invoiceNumber}`,
+                        debit: new Decimal(0),
+                        credit: totalCOGS,
+                      },
+                    ],
+                  },
+                },
+                include: { lines: true },
+              });
+
+              // Update COGS account balance (EXPENSE: debit increases)
+              const cogsAccount = await tx.account.findUnique({ where: { id: cogsAccountId } });
+              if (cogsAccount) {
+                await tx.account.update({
+                  where: { id: cogsAccountId },
+                  data: { balance: new Decimal(cogsAccount.balance).plus(totalCOGS) },
+                });
+              }
+
+              // Update Inventory Asset balance (ASSET: credit decreases)
+              const invAccount = await tx.account.findUnique({ where: { id: inventoryAssetAccountId } });
+              if (invAccount) {
+                await tx.account.update({
+                  where: { id: inventoryAssetAccountId },
+                  data: { balance: new Decimal(invAccount.balance).minus(totalCOGS) },
+                });
+              }
+            }
+          }
+        }
+      }
 
       const result = {
         ...invoice,
@@ -255,7 +395,7 @@ export class InvoicesService {
         action: 'CREATE',
         entity: 'Invoice',
         entityId: invoice.id,
-        description: `Invoice ${invoiceNumber} created for ${customer.name} — Rs ${totalAmount.toFixed(2)}`,
+        description: `Invoice ${invoiceNumber} created for ${customer.name} — Rs ${totalAmount.toFixed(2)}${dto.warehouseId ? ' (stock deducted)' : ''}`,
       });
 
       return result;

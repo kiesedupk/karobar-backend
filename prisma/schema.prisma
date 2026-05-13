@@ -352,6 +352,7 @@ model Invoice {
   customer Customer      @relation(fields: [customerId], references: [id])
   items    InvoiceItem[]
   payments Payment[]
+  warehouseId String?     // Optional: warehouse to deduct stock from
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
@@ -362,20 +363,23 @@ model Invoice {
 model InvoiceItem {
   id             String   @id @default(uuid())
   invoiceId      String
+  productId      String?  // Optional: link to product for inventory tracking
   description    String
   quantity       Decimal  @default(1)
   unitPrice      Decimal
-  discountRate   Decimal  @default(0) // Discount percentage e.g. 5.0 for 5%
+  discountRate   Decimal  @default(0)
   discountAmount Decimal  @default(0)
-  taxRate        Decimal  @default(0) // Tax percentage e.g. 17.0 for 17%
+  taxRate        Decimal  @default(0)
   taxAmount      Decimal  @default(0)
   totalAmount    Decimal
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  invoice Invoice @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id])
 
   @@index([invoiceId])
+  @@index([productId])
 }
 
 model Payment {
@@ -564,6 +568,7 @@ model Product {
   transferItems      WarehouseTransferItem[]
   stockTransactions  StockTransaction[]
   purchaseBillItems  PurchaseBillItem[]
+  invoiceItems       InvoiceItem[]
 }
 
 // ==========================================

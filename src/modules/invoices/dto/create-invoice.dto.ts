@@ -12,6 +12,10 @@ import {
 import { Type } from 'class-transformer';
 
 export class InvoiceItemDto {
+  @IsOptional()
+  @IsString()
+  productId?: string; // Optional: link to product for inventory tracking
+
   @IsNotEmpty()
   @IsString()
   description: string;
@@ -64,6 +68,10 @@ export class CreateInvoiceDto {
   @IsNumber({ maxDecimalPlaces: 2 })
   @Min(0)
   globalDiscountAmount?: number; // Flat discount on total (in currency)
+
+  @IsOptional()
+  @IsString()
+  warehouseId?: string; // Optional: warehouse to deduct stock from
 
   @IsArray()
   @ArrayMinSize(1, { message: 'An invoice must have at least one item' })
