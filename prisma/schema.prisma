@@ -43,6 +43,7 @@ model Company {
   warehouses         Warehouse[]
   warehouseStocks    WarehouseStock[]
   warehouseTransfers WarehouseTransfer[]
+  stockTransactions  StockTransaction[]
 }
 
 // ==========================================
@@ -559,6 +560,7 @@ model Product {
   
   warehouseStocks    WarehouseStock[]
   transferItems      WarehouseTransferItem[]
+  stockTransactions  StockTransaction[]
 }
 
 // ==========================================
@@ -579,6 +581,7 @@ model Warehouse {
   stocks     WarehouseStock[]
   transfersFrom WarehouseTransfer[] @relation("TransferFromWarehouse")
   transfersTo   WarehouseTransfer[] @relation("TransferToWarehouse")
+  stockTransactions StockTransaction[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -634,4 +637,38 @@ model WarehouseTransferItem {
 
   @@index([transferId])
   @@index([productId])
+}
+
+// ==========================================
+// 12. Stock Transactions (Inventory Engine)
+// ==========================================
+
+model StockTransaction {
+  id              String   @id @default(uuid())
+  companyId       String
+  warehouseId     String
+  productId       String
+  type            String   // STOCK_IN, STOCK_OUT, ADJUSTMENT, TRANSFER_IN, TRANSFER_OUT
+  quantity        Decimal  // Positive for in, negative for out/adjustment
+  previousQty     Decimal  @default(0)
+  newQty          Decimal  @default(0)
+  reference       String?  // Reference number (e.g., PO number, invoice number)
+  sourceType      String?  // PURCHASE, SALE, ADJUSTMENT, TRANSFER, OPENING
+  sourceId        String?  // ID of the source document (invoice, transfer, etc.)
+  reason          String?  // Reason for adjustment
+  notes           String?
+  performedBy     String?  // User ID
+  transactionDate DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
+  product   Product   @relation(fields: [productId], references: [id])
+
+  @@index([companyId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([type])
+  @@index([transactionDate])
+  @@index([sourceType, sourceId])
 }

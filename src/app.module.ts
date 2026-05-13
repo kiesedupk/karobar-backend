@@ -24,6 +24,7 @@ import { ProductCategoriesModule } from './modules/product-categories/product-ca
 import { UnitsOfMeasureModule } from './modules/units-of-measure/units-of-measure.module';
 import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { WarehouseTransfersModule } from './modules/warehouse-transfers/warehouse-transfers.module';
+import { StockTransactionsModule } from './modules/stock-transactions/stock-transactions.module';
 
 @Module({
   imports: [
@@ -44,6 +45,7 @@ import { WarehouseTransfersModule } from './modules/warehouse-transfers/warehous
     UnitsOfMeasureModule,
     WarehousesModule,
     WarehouseTransfersModule,
+    StockTransactionsModule,
   ],
   controllers: [AppController],
   providers: [AppService],
