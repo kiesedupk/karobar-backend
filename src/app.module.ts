@@ -19,6 +19,9 @@ import { ScheduleModule } from '@nestjs/schedule';
 import { BankingModule } from './modules/banking/banking.module';
 import { PeriodsModule } from './modules/periods/periods.module';
 import { MailModule } from './modules/mail/mail.module';
+import { ProductsModule } from './modules/products/products.module';
+import { ProductCategoriesModule } from './modules/product-categories/product-categories.module';
+import { UnitsOfMeasureModule } from './modules/units-of-measure/units-of-measure.module';
 
 @Module({
   imports: [
@@ -34,6 +37,9 @@ import { MailModule } from './modules/mail/mail.module';
         autoLogging: true,
       },
     }),
+    ProductsModule,
+    ProductCategoriesModule,
+    UnitsOfMeasureModule,
   ],
   controllers: [AppController],
   providers: [AppService],

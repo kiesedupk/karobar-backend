@@ -36,6 +36,10 @@ model Company {
   transfers          Transfer[]
   fiscalYears        FiscalYear[]
   accountingPeriods  AccountingPeriod[]
+  
+  unitsOfMeasure     UnitOfMeasure[]
+  productCategories  ProductCategory[]
+  products           Product[]
 }
 
 // ==========================================
@@ -231,6 +235,11 @@ model Account {
   parent       Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
   children     Account[]     @relation("AccountHierarchy")
   journalLines JournalLine[]
+  
+  // Product GL Links
+  productIncomes   Product[] @relation("ProductIncomeAccount")
+  productExpenses  Product[] @relation("ProductExpenseAccount")
+  productAssets    Product[] @relation("ProductAssetAccount")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -461,4 +470,87 @@ model AuditLog {
   @@index([userId])
   @@index([entity, entityId])
   @@index([createdAt])
+}
+
+// ==========================================
+// 10. Products & Inventory
+// ==========================================
+
+model UnitOfMeasure {
+  id        String   @id @default(uuid())
+  companyId String
+  name      String   // e.g., "Kilogram", "Piece", "Box"
+  symbol    String   // e.g., "kg", "pcs", "box"
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  products  Product[]
+
+  @@unique([companyId, name])
+  @@unique([companyId, symbol])
+  @@index([companyId])
+}
+
+model ProductCategory {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  description String?
+  parentId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent      ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    ProductCategory[] @relation("CategoryHierarchy")
+  products    Product[]
+
+  @@unique([companyId, name])
+  @@index([companyId])
+  @@index([parentId])
+}
+
+model Product {
+  id             String   @id @default(uuid())
+  companyId      String
+  name           String
+  description    String?
+  sku            String?
+  barcode        String?
+  
+  categoryId     String?
+  uomId          String?  // Unit of Measure
+  
+  type           String   @default("INVENTORY") // INVENTORY, SERVICE, NON_INVENTORY
+  
+  // Pricing
+  costPrice      Decimal  @default(0)
+  salePrice      Decimal  @default(0)
+  
+  // Inventory
+  trackInventory Boolean  @default(false)
+  currentStock   Decimal  @default(0)
+  reorderPoint   Decimal  @default(0)
+  
+  // Accounting Linking
+  incomeAccountId  String?
+  expenseAccountId String?
+  assetAccountId   String?
+  
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+  
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  category         ProductCategory? @relation(fields: [categoryId], references: [id])
+  uom              UnitOfMeasure?   @relation(fields: [uomId], references: [id])
+  incomeAccount    Account?         @relation("ProductIncomeAccount", fields: [incomeAccountId], references: [id])
+  expenseAccount   Account?         @relation("ProductExpenseAccount", fields: [expenseAccountId], references: [id])
+  assetAccount     Account?         @relation("ProductAssetAccount", fields: [assetAccountId], references: [id])
+  
+  @@unique([companyId, sku])
+  @@index([companyId])
+  @@index([categoryId])
+  @@index([uomId])
+  @@index([type])
 }
