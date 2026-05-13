@@ -1,9 +1,8 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards } from '@nestjs/common';
+import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
 import { UnitsOfMeasureService } from './units-of-measure.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
-import { CurrentCompany } from '../../common/decorators/current-company.decorator';
 
 @UseGuards(JwtAuthGuard)
 @Controller('units')
@@ -11,27 +10,27 @@ export class UnitsOfMeasureController {
   constructor(private readonly unitsService: UnitsOfMeasureService) {}
 
   @Post()
-  create(@CurrentCompany() companyId: string, @Body() createDto: CreateUnitDto) {
+  create(@Body('companyId') companyId: string, @Body() createDto: CreateUnitDto) {
     return this.unitsService.create(companyId, createDto);
   }
 
   @Get()
-  findAll(@CurrentCompany() companyId: string) {
+  findAll(@Query('companyId') companyId: string) {
     return this.unitsService.findAll(companyId);
   }
 
   @Get(':id')
-  findOne(@CurrentCompany() companyId: string, @Param('id') id: string) {
+  findOne(@Query('companyId') companyId: string, @Param('id') id: string) {
     return this.unitsService.findOne(companyId, id);
   }
 
   @Patch(':id')
-  update(@CurrentCompany() companyId: string, @Param('id') id: string, @Body() updateDto: UpdateUnitDto) {
+  update(@Query('companyId') companyId: string, @Param('id') id: string, @Body() updateDto: UpdateUnitDto) {
     return this.unitsService.update(companyId, id, updateDto);
   }
 
   @Delete(':id')
-  remove(@CurrentCompany() companyId: string, @Param('id') id: string) {
+  remove(@Query('companyId') companyId: string, @Param('id') id: string) {
     return this.unitsService.remove(companyId, id);
   }
 }
