@@ -43,6 +43,8 @@ model Company {
   warehouseTransfers        WarehouseTransfer[]
   stockAdjustments          StockAdjustment[]
   stockTakes                StockTake[]
+  posSessions               PosSession[]
+  posHeldCarts              PosHeldCart[]
 }
 
 model FiscalYear {
@@ -311,15 +313,53 @@ model Invoice {
   updatedAt         DateTime      @updatedAt
   overdueNotifiedAt DateTime?
   warehouseId       String?
+  posSessionId      String?
   company           Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   customer          Customer      @relation(fields: [customerId], references: [id])
   items             InvoiceItem[]
   payments          Payment[]
+  posSession        PosSession?   @relation(fields: [posSessionId], references: [id])
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
   @@index([customerId])
   @@index([status])
+  @@index([posSessionId])
+}
+
+model PosSession {
+  id             String    @id @default(uuid())
+  companyId      String
+  userId         String
+  warehouseId    String
+  openedAt       DateTime  @default(now())
+  closedAt       DateTime?
+  openingBalance Decimal   @default(0)
+  closingBalance Decimal?
+  status         String    @default("OPEN") // OPEN, CLOSED
+  notes          String?
+  company        Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  warehouse      Warehouse @relation(fields: [warehouseId], references: [id])
+  invoices       Invoice[]
+
+  @@index([companyId])
+  @@index([userId])
+  @@index([status])
+}
+
+model PosHeldCart {
+  id          String   @id @default(uuid())
+  companyId   String
+  userId      String
+  customerName String?
+  cartData    Json     // Array of items
+  notes       String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@index([companyId])
+  @@index([userId])
 }
 
 model InvoiceItem {
@@ -522,6 +562,7 @@ model Warehouse {
   transfersTo         WarehouseTransfer[]  @relation("TransferToWarehouse")
   stockAdjustments    StockAdjustment[]
   stockTakes          StockTake[]
+  posSessions         PosSession[]
 
   @@unique([companyId, name])
   @@index([companyId])

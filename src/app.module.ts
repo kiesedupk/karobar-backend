@@ -34,6 +34,7 @@ import { PurchaseBillsModule } from './modules/purchase-bills/purchase-bills.mod
 import { InventoryModule } from './modules/inventory/inventory.module';
 import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
 import { StockTakeModule } from './modules/stock-take/stock-take.module';
+import { PosModule } from './modules/pos/pos.module';
 
 @Module({
   imports: [
@@ -72,6 +73,7 @@ import { StockTakeModule } from './modules/stock-take/stock-take.module';
     InventoryModule,
     StockAdjustmentsModule,
     StockTakeModule,
+    PosModule,
   ],
   controllers: [AppController],
   providers: [AppService],
