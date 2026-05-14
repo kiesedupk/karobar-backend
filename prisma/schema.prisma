@@ -8,111 +8,94 @@ datasource db {
   directUrl = env("DIRECT_URL")
 }
 
-// ==========================================
-// 1. Core Tenant & Auth Models
-// ==========================================
-
 model Company {
-  id        String   @id @default(uuid())
-  name      String
-  email     String?
-  phone     String?
-  address   String?
-  currency  String   @default("PKR")
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  users             UserCompany[]
-  roles             Role[]
-  accounts          Account[]
-  journalEntries    JournalEntry[]
-  customers         Customer[]
-  vendors           Vendor[]
-  invoices          Invoice[]
-  expenses          Expense[]
-  auditLogs         AuditLog[]
-  recurringInvoices RecurringInvoice[]
-  bankAccounts      BankAccount[]
-  transfers         Transfer[]
-  fiscalYears       FiscalYear[]
-  accountingPeriods AccountingPeriod[]
-
-  unitsOfMeasure            UnitOfMeasure[]
-  productCategories         ProductCategory[]
+  id                        String                     @id @default(uuid())
+  name                      String
+  email                     String?
+  phone                     String?
+  address                   String?
+  currency                  String                     @default("PKR")
+  createdAt                 DateTime                   @default(now())
+  updatedAt                 DateTime                   @updatedAt
+  accounts                  Account[]
+  accountingPeriods         AccountingPeriod[]
+  auditLogs                 AuditLog[]
+  bankAccounts              BankAccount[]
+  customers                 Customer[]
+  expenses                  Expense[]
+  fiscalYears               FiscalYear[]
+  inventoryFifoConsumptions InventoryFifoConsumption[]
+  inventoryFifoLayers       InventoryFifoLayer[]
+  invoices                  Invoice[]
+  journalEntries            JournalEntry[]
   products                  Product[]
+  productCategories         ProductCategory[]
+  purchaseBills             PurchaseBill[]
+  recurringInvoices         RecurringInvoice[]
+  roles                     Role[]
+  stockTransactions         StockTransaction[]
+  transfers                 Transfer[]
+  unitsOfMeasure            UnitOfMeasure[]
+  users                     UserCompany[]
+  vendors                   Vendor[]
   warehouses                Warehouse[]
   warehouseStocks           WarehouseStock[]
   warehouseTransfers        WarehouseTransfer[]
-  stockTransactions         StockTransaction[]
-  purchaseBills             PurchaseBill[]
-  inventoryFifoLayers       InventoryFifoLayer[]
-  inventoryFifoConsumptions InventoryFifoConsumption[]
 }
 
-// ==========================================
-// 9. Accounting Periods & Fiscal Years
-// ==========================================
-
 model FiscalYear {
-  id        String   @id @default(uuid())
+  id        String             @id @default(uuid())
   companyId String
-  name      String // e.g. "FY 2023-24"
+  name      String
   startDate DateTime
   endDate   DateTime
-  status    String   @default("OPEN") // OPEN, CLOSED
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  periods AccountingPeriod[]
+  status    String             @default("OPEN")
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  periods   AccountingPeriod[]
+  company   Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
 }
 
 model AccountingPeriod {
-  id           String    @id @default(uuid())
+  id           String     @id @default(uuid())
   companyId    String
   fiscalYearId String
-  name         String // e.g. "July 2023"
+  name         String
   startDate    DateTime
   endDate      DateTime
-  isClosed     Boolean   @default(false)
+  isClosed     Boolean    @default(false)
   closedAt     DateTime?
-  closedBy     String? // User ID who closed it
-  status       String    @default("OPEN") // OPEN, CLOSED, LOCKED
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
-
-  company    Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  fiscalYear FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
+  closedBy     String?
+  status       String     @default("OPEN")
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  company      Company    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fiscalYear   FiscalYear @relation(fields: [fiscalYearId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
   @@index([fiscalYearId])
   @@index([startDate, endDate])
 }
 
-// ==========================================
-// 8. Bank & Cash Management
-// ==========================================
-
 model BankAccount {
-  id             String   @id @default(uuid())
-  companyId      String
-  glAccountId    String // Links to GL Account (Account model)
-  name           String // e.g. "HBL Current Account"
-  accountNumber  String? // Real bank account number
-  bankName       String? // e.g. "Habib Bank Limited"
-  branchName     String?
-  branchCode     String?
-  accountType    String   @default("BANK") // BANK, CASH, MOBILE_WALLET
-  currency       String   @default("PKR")
-  openingBalance Decimal  @default(0)
-  currentBalance Decimal  @default(0)
-  isActive       Boolean  @default(true)
-  description    String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
+  id               String            @id @default(uuid())
+  companyId        String
+  glAccountId      String
+  name             String
+  accountNumber    String?
+  bankName         String?
+  branchName       String?
+  branchCode       String?
+  accountType      String            @default("BANK")
+  currency         String            @default("PKR")
+  openingBalance   Decimal           @default(0)
+  currentBalance   Decimal           @default(0)
+  isActive         Boolean           @default(true)
+  description      String?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
   company          Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
   transactionsFrom BankTransaction[] @relation("FromAccount")
   transactionsTo   BankTransaction[] @relation("ToAccount")
@@ -125,22 +108,21 @@ model BankAccount {
 }
 
 model Transfer {
-  id             String   @id @default(uuid())
+  id             String      @id @default(uuid())
   companyId      String
   fromAccountId  String
   toAccountId    String
   journalEntryId String?
   amount         Decimal
-  transferDate   DateTime @default(now())
+  transferDate   DateTime    @default(now())
   reference      String?
   description    String
-  status         String   @default("COMPLETED") // COMPLETED, VOIDED
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  company     Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  fromAccount BankAccount @relation("TransferFrom", fields: [fromAccountId], references: [id])
-  toAccount   BankAccount @relation("TransferTo", fields: [toAccountId], references: [id])
+  status         String      @default("COMPLETED")
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  company        Company     @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromAccount    BankAccount @relation("TransferFrom", fields: [fromAccountId], references: [id])
+  toAccount      BankAccount @relation("TransferTo", fields: [toAccountId], references: [id])
 
   @@index([companyId])
   @@index([fromAccountId])
@@ -149,23 +131,22 @@ model Transfer {
 }
 
 model BankTransaction {
-  id                String   @id @default(uuid())
+  id                String       @id @default(uuid())
   companyId         String
   bankAccountId     String
-  oppositeAccountId String? // The other account in a transfer
+  oppositeAccountId String?
   journalEntryId    String?
-  type              String // DEBIT, CREDIT
-  category          String // TRANSFER, PAYMENT_IN, PAYMENT_OUT, ADJUSTMENT, OPENING
+  type              String
+  category          String
   amount            Decimal
-  runningBalance    Decimal  @default(0)
-  transactionDate   DateTime @default(now())
+  runningBalance    Decimal      @default(0)
+  transactionDate   DateTime     @default(now())
   description       String
   reference         String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
-
-  bankAccount     BankAccount  @relation("FromAccount", fields: [bankAccountId], references: [id], onDelete: Cascade)
-  oppositeAccount BankAccount? @relation("ToAccount", fields: [oppositeAccountId], references: [id])
+  createdAt         DateTime     @default(now())
+  updatedAt         DateTime     @updatedAt
+  bankAccount       BankAccount  @relation("FromAccount", fields: [bankAccountId], references: [id], onDelete: Cascade)
+  oppositeAccount   BankAccount? @relation("ToAccount", fields: [oppositeAccountId], references: [id])
 
   @@index([companyId])
   @@index([bankAccountId])
@@ -174,27 +155,25 @@ model BankTransaction {
 }
 
 model User {
-  id        String   @id @default(uuid())
-  email     String   @unique
+  id        String        @id @default(uuid())
+  email     String        @unique
   password  String
   firstName String
   lastName  String?
-  isActive  Boolean  @default(true)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  isActive  Boolean       @default(true)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
   companies UserCompany[]
 }
 
 model Role {
-  id          String   @id @default(uuid())
-  companyId   String
-  name        String // e.g. "ADMIN", "ACCOUNTANT", "MANAGER", "CASHIER"
-  description String?
-  permissions String // JSON string or comma-separated permissions (e.g., "invoice:create,report:view")
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id            String        @id @default(uuid())
+  companyId     String
+  name          String
+  description   String?
+  permissions   String
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
   company       Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
   userCompanies UserCompany[]
 
@@ -209,10 +188,9 @@ model UserCompany {
   roleId    String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-
-  user    User    @relation(fields: [userId], references: [id], onDelete: Cascade)
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  role    Role    @relation(fields: [roleId], references: [id])
+  company   Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  role      Role     @relation(fields: [roleId], references: [id])
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([userId, companyId])
   @@index([userId])
@@ -220,33 +198,26 @@ model UserCompany {
   @@index([roleId])
 }
 
-// ==========================================
-// 2. Chart of Accounts & General Ledger (GL)
-// ==========================================
-
 model Account {
-  id          String   @id @default(uuid())
-  companyId   String
-  parentId    String? // Self-relation for parent-child hierarchy
-  code        String // Account code (e.g., "1010", "4000")
-  name        String
-  type        String // ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE
-  subType     String? // Optional sub-classification (e.g., "BANK", "CASH", "RECEIVABLE")
-  description String?
-  balance     Decimal  @default(0) // Cached ledger balance (Debits - Credits or Credits - Debits depending on type)
-  isActive    Boolean  @default(true)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  company      Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent       Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
-  children     Account[]     @relation("AccountHierarchy")
-  journalLines JournalLine[]
-
-  // Product GL Links
-  productIncomes  Product[] @relation("ProductIncomeAccount")
-  productExpenses Product[] @relation("ProductExpenseAccount")
-  productAssets   Product[] @relation("ProductAssetAccount")
+  id              String        @id @default(uuid())
+  companyId       String
+  parentId        String?
+  code            String
+  name            String
+  type            String
+  subType         String?
+  description     String?
+  balance         Decimal       @default(0)
+  isActive        Boolean       @default(true)
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  company         Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent          Account?      @relation("AccountHierarchy", fields: [parentId], references: [id])
+  children        Account[]     @relation("AccountHierarchy")
+  journalLines    JournalLine[]
+  productAssets   Product[]     @relation("ProductAssetAccount")
+  productExpenses Product[]     @relation("ProductExpenseAccount")
+  productIncomes  Product[]     @relation("ProductIncomeAccount")
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -254,54 +225,47 @@ model Account {
 }
 
 model JournalEntry {
-  id          String   @id @default(uuid())
+  id          String        @id @default(uuid())
   companyId   String
-  date        DateTime @default(now())
-  reference   String? // Reference/Voucher number
+  date        DateTime      @default(now())
+  reference   String?
   description String
-  status      String   @default("POSTED") // DRAFT, POSTED, VOIDED
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  status      String        @default("POSTED")
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  lines       JournalLine[]
 
-  company Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  lines   JournalLine[]
-
-  @@unique([companyId, reference]) // Reference number unique per company
+  @@unique([companyId, reference])
   @@index([companyId])
 }
 
 model JournalLine {
-  id             String   @id @default(uuid())
+  id             String       @id @default(uuid())
   journalEntryId String
   accountId      String
   description    String?
-  debit          Decimal  @default(0) // Precise accounting Decimal representation
-  credit         Decimal  @default(0) // Precise accounting Decimal representation
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-
-  journalEntry JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
-  account      Account      @relation(fields: [accountId], references: [id])
+  debit          Decimal      @default(0)
+  credit         Decimal      @default(0)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
+  account        Account      @relation(fields: [accountId], references: [id])
+  journalEntry   JournalEntry @relation(fields: [journalEntryId], references: [id], onDelete: Cascade)
 
   @@index([journalEntryId])
   @@index([accountId])
 }
 
-// ==========================================
-// 3. Contacts & Business Ledger (AR/AP)
-// ==========================================
-
 model Customer {
-  id        String   @id @default(uuid())
-  companyId String
-  name      String
-  email     String?
-  phone     String?
-  address   String?
-  balance   Decimal  @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
+  id                String             @id @default(uuid())
+  companyId         String
+  name              String
+  email             String?
+  phone             String?
+  address           String?
+  balance           Decimal            @default(0)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
   company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   invoices          Invoice[]
   recurringInvoices RecurringInvoice[]
@@ -310,51 +274,45 @@ model Customer {
 }
 
 model Vendor {
-  id        String   @id @default(uuid())
-  companyId String
-  name      String
-  email     String?
-  phone     String?
-  address   String?
-  balance   Decimal  @default(0)
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  id            String         @id @default(uuid())
+  companyId     String
+  name          String
+  email         String?
+  phone         String?
+  address       String?
+  balance       Decimal        @default(0)
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
   expenses      Expense[]
   purchaseBills PurchaseBill[]
+  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
 }
 
-// ==========================================
-// 4. Invoicing & Payments Module
-// ==========================================
-
 model Invoice {
-  id                String    @id @default(uuid())
+  id                String        @id @default(uuid())
   companyId         String
   customerId        String
-  journalEntryId    String? // Link to auto-posted journal entry
+  journalEntryId    String?
   invoiceNumber     String
   issueDate         DateTime
   dueDate           DateTime?
-  subTotal          Decimal   @default(0)
-  discountAmount    Decimal   @default(0)
-  taxAmount         Decimal   @default(0)
-  totalAmount       Decimal   @default(0)
-  paidAmount        Decimal   @default(0)
-  status            String    @default("DRAFT") // DRAFT, SENT, PARTIAL, PAID, OVERDUE, CANCELLED
+  subTotal          Decimal       @default(0)
+  discountAmount    Decimal       @default(0)
+  taxAmount         Decimal       @default(0)
+  totalAmount       Decimal       @default(0)
+  paidAmount        Decimal       @default(0)
+  status            String        @default("DRAFT")
   notes             String?
-  overdueNotifiedAt DateTime? // When overdue notification was last flagged
-  createdAt         DateTime  @default(now())
-  updatedAt         DateTime  @updatedAt
-
-  company     Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer    Customer      @relation(fields: [customerId], references: [id])
-  items       InvoiceItem[]
-  payments    Payment[]
-  warehouseId String? // Optional: warehouse to deduct stock from
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+  overdueNotifiedAt DateTime?
+  warehouseId       String?
+  company           Company       @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer      @relation(fields: [customerId], references: [id])
+  items             InvoiceItem[]
+  payments          Payment[]
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
@@ -365,7 +323,6 @@ model Invoice {
 model InvoiceItem {
   id             String   @id @default(uuid())
   invoiceId      String
-  productId      String? // Optional: link to product for inventory tracking
   description    String
   quantity       Decimal  @default(1)
   unitPrice      Decimal
@@ -376,9 +333,9 @@ model InvoiceItem {
   totalAmount    Decimal
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-
-  invoice Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
-  product Product? @relation(fields: [productId], references: [id])
+  productId      String?
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  product        Product? @relation(fields: [productId], references: [id])
 
   @@index([invoiceId])
   @@index([productId])
@@ -388,95 +345,79 @@ model Payment {
   id             String   @id @default(uuid())
   companyId      String
   invoiceId      String
-  journalEntryId String? // Link to auto-posted journal entry for payment
+  journalEntryId String?
   amount         Decimal
   paymentDate    DateTime @default(now())
-  method         String   @default("CASH") // CASH, BANK, CHEQUE, ONLINE
-  reference      String? // Cheque number, transaction ref, etc.
+  method         String   @default("CASH")
+  reference      String?
   notes          String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
-
-  invoice Invoice @relation(fields: [invoiceId], references: [id])
+  invoice        Invoice  @relation(fields: [invoiceId], references: [id])
 
   @@index([companyId])
   @@index([invoiceId])
 }
 
-// ==========================================
-// 5. Expenses & Bills Module
-// ==========================================
-
 model Expense {
   id               String   @id @default(uuid())
   companyId        String
-  vendorId         String? // Optional, if paid to a specific vendor
-  journalEntryId   String? // Link to auto-posted journal entry
-  expenseAccountId String // The GL Account for the expense (Debit)
-  paymentAccountId String // The GL Account for the payment (Credit)
-  referenceNumber  String? // Receipt or Bill number
+  vendorId         String?
+  journalEntryId   String?
+  expenseAccountId String
+  paymentAccountId String
+  referenceNumber  String?
   date             DateTime @default(now())
   amount           Decimal
   description      String
-  status           String   @default("PAID") // PAID, PENDING, CANCELLED
+  status           String   @default("PAID")
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
-
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  vendor  Vendor? @relation(fields: [vendorId], references: [id])
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor           Vendor?  @relation(fields: [vendorId], references: [id])
 
   @@index([companyId])
   @@index([vendorId])
   @@index([status])
 }
 
-// ==========================================
-// 7. Recurring Invoices
-// ==========================================
-
 model RecurringInvoice {
   id              String    @id @default(uuid())
   companyId       String
   customerId      String
-  frequency       String // WEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM
-  intervalDays    Int? // Custom interval in days (used when frequency=CUSTOM)
+  frequency       String
+  intervalDays    Int?
   nextIssueDate   DateTime
-  endDate         DateTime? // null = indefinite
-  daysDueAfter    Int       @default(30) // Net-30 payment terms
-  templateItems   Json // Line items template [{description, quantity, unitPrice, taxRate, discountRate}]
+  endDate         DateTime?
+  daysDueAfter    Int       @default(30)
+  templateItems   Json
   notes           String?
   isActive        Boolean   @default(true)
   lastGeneratedAt DateTime?
   totalGenerated  Int       @default(0)
   createdAt       DateTime  @default(now())
   updatedAt       DateTime  @updatedAt
-
-  company  Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  customer Customer @relation(fields: [customerId], references: [id])
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer        Customer  @relation(fields: [customerId], references: [id])
 
   @@index([companyId])
   @@index([nextIssueDate])
   @@index([isActive])
 }
 
-// ==========================================
-// 6. Audit Logging
-// ==========================================
-
 model AuditLog {
   id          String   @id @default(uuid())
   companyId   String
-  userId      String? // Who performed the action
-  action      String // CREATE, UPDATE, DELETE, VOID, POST, LOGIN
-  entity      String // Invoice, Expense, JournalEntry, Account, etc.
-  entityId    String? // ID of the affected record
-  description String // Human-readable summary
-  changes     String? // JSON: { field: { old, new } }
+  userId      String?
+  action      String
+  entity      String
+  entityId    String?
+  description String
+  changes     String?
   ipAddress   String?
   userAgent   String?
   createdAt   DateTime @default(now())
-
-  company Company @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
   @@index([userId])
@@ -484,20 +425,15 @@ model AuditLog {
   @@index([createdAt])
 }
 
-// ==========================================
-// 10. Products & Inventory
-// ==========================================
-
 model UnitOfMeasure {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   companyId String
-  name      String // e.g., "Kilogram", "Piece", "Box"
-  symbol    String // e.g., "kg", "pcs", "box"
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company  Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  products Product[]
+  name      String
+  symbol    String
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  products  Product[]
+  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@unique([companyId, name])
   @@unique([companyId, symbol])
@@ -505,18 +441,17 @@ model UnitOfMeasure {
 }
 
 model ProductCategory {
-  id          String   @id @default(uuid())
+  id          String            @id @default(uuid())
   companyId   String
   name        String
   description String?
   parentId    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  company  Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  parent   ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
-  children ProductCategory[] @relation("CategoryHierarchy")
-  products Product[]
+  createdAt   DateTime          @default(now())
+  updatedAt   DateTime          @updatedAt
+  products    Product[]
+  company     Company           @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  parent      ProductCategory?  @relation("CategoryHierarchy", fields: [parentId], references: [id])
+  children    ProductCategory[] @relation("CategoryHierarchy")
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -524,48 +459,37 @@ model ProductCategory {
 }
 
 model Product {
-  id          String  @id @default(uuid())
-  companyId   String
-  name        String
-  description String?
-  sku         String?
-  barcode     String?
-
-  categoryId String?
-  uomId      String? // Unit of Measure
-
-  type String @default("INVENTORY") // INVENTORY, SERVICE, NON_INVENTORY
-
-  // Pricing
-  costPrice Decimal @default(0)
-  salePrice Decimal @default(0)
-
-  // Inventory
-  trackInventory Boolean @default(false)
-  currentStock   Decimal @default(0)
-  reorderPoint   Decimal @default(0)
-
-  // Accounting Linking
-  incomeAccountId  String?
-  expenseAccountId String?
-  assetAccountId   String?
-
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  company        Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  category       ProductCategory? @relation(fields: [categoryId], references: [id])
-  uom            UnitOfMeasure?   @relation(fields: [uomId], references: [id])
-  incomeAccount  Account?         @relation("ProductIncomeAccount", fields: [incomeAccountId], references: [id])
-  expenseAccount Account?         @relation("ProductExpenseAccount", fields: [expenseAccountId], references: [id])
-  assetAccount   Account?         @relation("ProductAssetAccount", fields: [assetAccountId], references: [id])
-
+  id                  String                  @id @default(uuid())
+  companyId           String
+  name                String
+  description         String?
+  sku                 String?
+  barcode             String?
+  categoryId          String?
+  uomId               String?
+  type                String                  @default("INVENTORY")
+  costPrice           Decimal                 @default(0)
+  salePrice           Decimal                 @default(0)
+  trackInventory      Boolean                 @default(false)
+  currentStock        Decimal                 @default(0)
+  reorderPoint        Decimal                 @default(0)
+  incomeAccountId     String?
+  expenseAccountId    String?
+  assetAccountId      String?
+  createdAt           DateTime                @default(now())
+  updatedAt           DateTime                @updatedAt
+  inventoryFifoLayers InventoryFifoLayer[]
+  invoiceItems        InvoiceItem[]
+  assetAccount        Account?                @relation("ProductAssetAccount", fields: [assetAccountId], references: [id])
+  category            ProductCategory?        @relation(fields: [categoryId], references: [id])
+  company             Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  expenseAccount      Account?                @relation("ProductExpenseAccount", fields: [expenseAccountId], references: [id])
+  incomeAccount       Account?                @relation("ProductIncomeAccount", fields: [incomeAccountId], references: [id])
+  uom                 UnitOfMeasure?          @relation(fields: [uomId], references: [id])
+  purchaseBillItems   PurchaseBillItem[]
+  stockTransactions   StockTransaction[]
   warehouseStocks     WarehouseStock[]
   transferItems       WarehouseTransferItem[]
-  stockTransactions   StockTransaction[]
-  purchaseBillItems   PurchaseBillItem[]
-  invoiceItems        InvoiceItem[]
-  inventoryFifoLayers InventoryFifoLayer[]
 
   @@unique([companyId, sku])
   @@index([companyId])
@@ -574,64 +498,57 @@ model Product {
   @@index([type])
 }
 
-// ==========================================
-// 11. Warehouse & Stock Management
-// ==========================================
-
 model Warehouse {
-  id          String   @id @default(uuid())
-  companyId   String
-  name        String
-  location    String?
-  status      String   @default("ACTIVE") // ACTIVE, INACTIVE
-  description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
+  id                  String               @id @default(uuid())
+  companyId           String
+  name                String
+  location            String?
+  status              String               @default("ACTIVE")
+  description         String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  inventoryFifoLayers InventoryFifoLayer[]
+  stockTransactions   StockTransaction[]
   company             Company              @relation(fields: [companyId], references: [id], onDelete: Cascade)
   stocks              WarehouseStock[]
   transfersFrom       WarehouseTransfer[]  @relation("TransferFromWarehouse")
   transfersTo         WarehouseTransfer[]  @relation("TransferToWarehouse")
-  stockTransactions   StockTransaction[]
-  inventoryFifoLayers InventoryFifoLayer[]
 
   @@unique([companyId, name])
   @@index([companyId])
 }
 
 model WarehouseStock {
-  id          String   @id @default(uuid())
+  id          String    @id @default(uuid())
   companyId   String
   warehouseId String
   productId   String
-  quantity    Decimal  @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
-
-  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
-  product   Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  quantity    Decimal   @default(0)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  company     Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product     Product   @relation(fields: [productId], references: [id], onDelete: Cascade)
+  warehouse   Warehouse @relation(fields: [warehouseId], references: [id], onDelete: Cascade)
 
   @@unique([warehouseId, productId])
   @@index([companyId])
 }
 
 model WarehouseTransfer {
-  id              String   @id @default(uuid())
+  id              String                  @id @default(uuid())
   companyId       String
   fromWarehouseId String
   toWarehouseId   String
-  transferDate    DateTime @default(now())
+  transferDate    DateTime                @default(now())
   reference       String?
-  status          String   @default("COMPLETED") // DRAFT, COMPLETED, CANCELLED
+  status          String                  @default("COMPLETED")
   notes           String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
-
-  company       Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  fromWarehouse Warehouse               @relation("TransferFromWarehouse", fields: [fromWarehouseId], references: [id])
-  toWarehouse   Warehouse               @relation("TransferToWarehouse", fields: [toWarehouseId], references: [id])
-  items         WarehouseTransferItem[]
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+  company         Company                 @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  fromWarehouse   Warehouse               @relation("TransferFromWarehouse", fields: [fromWarehouseId], references: [id])
+  toWarehouse     Warehouse               @relation("TransferToWarehouse", fields: [toWarehouseId], references: [id])
+  items           WarehouseTransferItem[]
 
   @@index([companyId])
   @@index([fromWarehouseId])
@@ -639,43 +556,37 @@ model WarehouseTransfer {
 }
 
 model WarehouseTransferItem {
-  id         String  @id @default(uuid())
+  id         String            @id @default(uuid())
   transferId String
   productId  String
   quantity   Decimal
-
-  transfer WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
-  product  Product           @relation(fields: [productId], references: [id])
+  product    Product           @relation(fields: [productId], references: [id])
+  transfer   WarehouseTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
 
   @@index([transferId])
   @@index([productId])
 }
 
-// ==========================================
-// 12. Stock Transactions (Inventory Engine)
-// ==========================================
-
 model StockTransaction {
-  id              String   @id @default(uuid())
+  id              String    @id @default(uuid())
   companyId       String
   warehouseId     String
   productId       String
-  type            String // STOCK_IN, STOCK_OUT, ADJUSTMENT, TRANSFER_IN, TRANSFER_OUT
-  quantity        Decimal // Positive for in, negative for out/adjustment
-  previousQty     Decimal  @default(0)
-  newQty          Decimal  @default(0)
-  reference       String? // Reference number (e.g., PO number, invoice number)
-  sourceType      String? // PURCHASE, SALE, ADJUSTMENT, TRANSFER, OPENING
-  sourceId        String? // ID of the source document (invoice, transfer, etc.)
-  reason          String? // Reason for adjustment
+  type            String
+  quantity        Decimal
+  previousQty     Decimal   @default(0)
+  newQty          Decimal   @default(0)
+  reference       String?
+  sourceType      String?
+  sourceId        String?
+  reason          String?
   notes           String?
-  performedBy     String? // User ID
-  transactionDate DateTime @default(now())
-  createdAt       DateTime @default(now())
-
-  company   Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  warehouse Warehouse @relation(fields: [warehouseId], references: [id])
-  product   Product   @relation(fields: [productId], references: [id])
+  performedBy     String?
+  transactionDate DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  company         Company   @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product         Product   @relation(fields: [productId], references: [id])
+  warehouse       Warehouse @relation(fields: [warehouseId], references: [id])
 
   @@index([companyId])
   @@index([warehouseId])
@@ -685,31 +596,26 @@ model StockTransaction {
   @@index([sourceType, sourceId])
 }
 
-// ==========================================
-// 13. Purchase Bills (Inventory Integration)
-// ==========================================
-
 model PurchaseBill {
-  id             String    @id @default(uuid())
+  id             String             @id @default(uuid())
   companyId      String
   vendorId       String?
-  warehouseId    String // Target warehouse for stock
-  journalEntryId String? // Link to auto-posted journal entry
+  warehouseId    String
+  journalEntryId String?
   billNumber     String
-  billDate       DateTime  @default(now())
+  billDate       DateTime           @default(now())
   dueDate        DateTime?
-  subTotal       Decimal   @default(0)
-  taxAmount      Decimal   @default(0)
-  totalAmount    Decimal   @default(0)
-  paidAmount     Decimal   @default(0)
-  status         String    @default("RECEIVED") // DRAFT, RECEIVED, PAID, CANCELLED
+  subTotal       Decimal            @default(0)
+  taxAmount      Decimal            @default(0)
+  totalAmount    Decimal            @default(0)
+  paidAmount     Decimal            @default(0)
+  status         String             @default("RECEIVED")
   notes          String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
-
-  company Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  vendor  Vendor?            @relation(fields: [vendorId], references: [id])
-  items   PurchaseBillItem[]
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor         Vendor?            @relation(fields: [vendorId], references: [id])
+  items          PurchaseBillItem[]
 
   @@unique([companyId, billNumber])
   @@index([companyId])
@@ -718,55 +624,40 @@ model PurchaseBill {
 }
 
 model PurchaseBillItem {
-  id          String   @id @default(uuid())
+  id          String       @id @default(uuid())
   billId      String
   productId   String
   description String?
-  quantity    Decimal  @default(1)
+  quantity    Decimal      @default(1)
   unitCost    Decimal
-  taxRate     Decimal  @default(0)
-  taxAmount   Decimal  @default(0)
+  taxRate     Decimal      @default(0)
+  taxAmount   Decimal      @default(0)
   totalAmount Decimal
-  createdAt   DateTime @default(now())
-
-  bill    PurchaseBill @relation(fields: [billId], references: [id], onDelete: Cascade)
-  product Product      @relation(fields: [productId], references: [id])
+  createdAt   DateTime     @default(now())
+  bill        PurchaseBill @relation(fields: [billId], references: [id], onDelete: Cascade)
+  product     Product      @relation(fields: [productId], references: [id])
 
   @@index([billId])
   @@index([productId])
 }
 
-// ==========================================
-// 14. FIFO Inventory Valuation
-// ==========================================
-
 model InventoryFifoLayer {
-  id          String @id @default(uuid())
-  companyId   String
-  warehouseId String
-  productId   String
-
-  // The cost per unit when this batch was acquired
-  unitCost Decimal
-
-  // Original quantity that came in
-  originalQty Decimal
-
-  // Quantity remaining that has not yet been sold
+  id           String                     @id @default(uuid())
+  companyId    String
+  warehouseId  String
+  productId    String
+  unitCost     Decimal
+  originalQty  Decimal
   remainingQty Decimal
-
-  // Source info
-  sourceType String? // PURCHASE, OPENING, ADJUSTMENT, RETURN
-  sourceId   String? // Link to PurchaseBillItem, etc.
-
-  acquiredAt DateTime @default(now())
-  createdAt  DateTime @default(now())
-  updatedAt  DateTime @updatedAt
-
-  company      Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  warehouse    Warehouse                  @relation(fields: [warehouseId], references: [id])
-  product      Product                    @relation(fields: [productId], references: [id])
+  sourceType   String?
+  sourceId     String?
+  acquiredAt   DateTime                   @default(now())
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
   consumptions InventoryFifoConsumption[]
+  company      Company                    @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product      Product                    @relation(fields: [productId], references: [id])
+  warehouse    Warehouse                  @relation(fields: [warehouseId], references: [id])
 
   @@index([companyId])
   @@index([warehouseId])
@@ -776,23 +667,17 @@ model InventoryFifoLayer {
 }
 
 model InventoryFifoConsumption {
-  id          String @id @default(uuid())
-  companyId   String
-  fifoLayerId String
-
-  // Which transaction consumed this stock (e.g. Invoice)
-  transactionType String // SALE, TRANSFER_OUT, ADJUSTMENT
-  transactionId   String
-
-  // How much was consumed from this layer
+  id               String             @id @default(uuid())
+  companyId        String
+  fifoLayerId      String
+  transactionType  String
+  transactionId    String
   quantityConsumed Decimal
   unitCost         Decimal
-  totalCost        Decimal // quantityConsumed * unitCost
-
-  consumedAt DateTime @default(now())
-
-  company Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
-  layer   InventoryFifoLayer @relation(fields: [fifoLayerId], references: [id])
+  totalCost        Decimal
+  consumedAt       DateTime           @default(now())
+  company          Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  layer            InventoryFifoLayer @relation(fields: [fifoLayerId], references: [id])
 
   @@index([companyId])
   @@index([fifoLayerId])

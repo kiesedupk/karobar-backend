@@ -20,7 +20,10 @@ async function bootstrap() {
 
   // Enable CORS securely for frontend
   app.enableCors({
-    origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+    origin: [
+      process.env.FRONTEND_URL || 'http://localhost:3000',
+      'https://karobar-frontend.vercel.app'
+    ],
     credentials: true,
   });
 
