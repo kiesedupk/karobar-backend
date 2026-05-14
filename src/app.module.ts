@@ -31,6 +31,9 @@ import { WarehousesModule } from './modules/warehouses/warehouses.module';
 import { WarehouseTransfersModule } from './modules/warehouse-transfers/warehouse-transfers.module';
 import { StockTransactionsModule } from './modules/stock-transactions/stock-transactions.module';
 import { PurchaseBillsModule } from './modules/purchase-bills/purchase-bills.module';
+import { InventoryModule } from './modules/inventory/inventory.module';
+import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
+import { StockTakeModule } from './modules/stock-take/stock-take.module';
 
 @Module({
   imports: [
@@ -66,6 +69,9 @@ import { PurchaseBillsModule } from './modules/purchase-bills/purchase-bills.mod
     WarehouseTransfersModule,
     StockTransactionsModule,
     PurchaseBillsModule,
+    InventoryModule,
+    StockAdjustmentsModule,
+    StockTakeModule,
   ],
   controllers: [AppController],
   providers: [AppService],

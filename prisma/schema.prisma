@@ -41,6 +41,8 @@ model Company {
   warehouses                Warehouse[]
   warehouseStocks           WarehouseStock[]
   warehouseTransfers        WarehouseTransfer[]
+  stockAdjustments          StockAdjustment[]
+  stockTakes                StockTake[]
 }
 
 model FiscalYear {
@@ -490,6 +492,8 @@ model Product {
   stockTransactions   StockTransaction[]
   warehouseStocks     WarehouseStock[]
   transferItems       WarehouseTransferItem[]
+  stockAdjustments    StockAdjustment[]
+  stockTakeItems      StockTakeItem[]
 
   @@unique([companyId, sku])
   @@unique([companyId, barcode])
@@ -516,6 +520,8 @@ model Warehouse {
   stocks              WarehouseStock[]
   transfersFrom       WarehouseTransfer[]  @relation("TransferFromWarehouse")
   transfersTo         WarehouseTransfer[]  @relation("TransferToWarehouse")
+  stockAdjustments    StockAdjustment[]
+  stockTakes          StockTake[]
 
   @@unique([companyId, name])
   @@index([companyId])
@@ -685,4 +691,66 @@ model InventoryFifoConsumption {
   @@index([companyId])
   @@index([fifoLayerId])
   @@index([transactionType, transactionId])
+}
+
+model StockAdjustment {
+  id               String   @id @default(uuid())
+  companyId        String
+  warehouseId      String
+  productId        String
+  type             String   // INCREASE, DECREASE
+  quantity         Decimal
+  reason           String   // DAMAGED, LOST, FOUND, CORRECTION, EXPIRED
+  status           String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  reference        String?
+  notes            String?
+  performedBy      String?
+  approvedBy       String?
+  adjustmentDate   DateTime @default(now())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  product          Product  @relation(fields: [productId], references: [id])
+  warehouse        Warehouse @relation(fields: [warehouseId], references: [id])
+  stockTakeItemId  String?  @unique
+
+  @@index([companyId])
+  @@index([warehouseId])
+  @@index([productId])
+  @@index([status])
+}
+
+model StockTake {
+  id             String          @id @default(uuid())
+  companyId      String
+  warehouseId    String
+  status         String          @default("DRAFT") // DRAFT, COMPLETED, CANCELLED
+  startedAt      DateTime        @default(now())
+  completedAt    DateTime?
+  notes          String?
+  performedBy    String?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  company        Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  warehouse      Warehouse       @relation(fields: [warehouseId], references: [id])
+  items          StockTakeItem[]
+
+  @@index([companyId])
+  @@index([warehouseId])
+  @@index([status])
+}
+
+model StockTakeItem {
+  id               String   @id @default(uuid())
+  stockTakeId      String
+  productId        String
+  systemQuantity   Decimal
+  physicalQuantity Decimal
+  discrepancy      Decimal
+  notes            String?
+  product          Product  @relation(fields: [productId], references: [id])
+  stockTake        StockTake @relation(fields: [stockTakeId], references: [id], onDelete: Cascade)
+
+  @@index([stockTakeId])
+  @@index([productId])
 }
