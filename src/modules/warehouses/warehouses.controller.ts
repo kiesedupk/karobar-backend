@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Put, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Put,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { WarehousesService } from './warehouses.service';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
@@ -10,7 +20,10 @@ export class WarehousesController {
   constructor(private readonly warehousesService: WarehousesService) {}
 
   @Post()
-  create(@Body('companyId') companyId: string, @Body() createDto: CreateWarehouseDto) {
+  create(
+    @Body('companyId') companyId: string,
+    @Body() createDto: CreateWarehouseDto,
+  ) {
     return this.warehousesService.create(companyId, createDto);
   }
 
@@ -21,7 +34,12 @@ export class WarehousesController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    return this.warehousesService.findAll(companyId, page ? +page : 1, limit ? +limit : 20, search);
+    return this.warehousesService.findAll(
+      companyId,
+      page ? +page : 1,
+      limit ? +limit : 20,
+      search,
+    );
   }
 
   @Get(':id')
@@ -30,7 +48,11 @@ export class WarehousesController {
   }
 
   @Put(':id')
-  update(@Query('companyId') companyId: string, @Param('id') id: string, @Body() updateDto: UpdateWarehouseDto) {
+  update(
+    @Query('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateWarehouseDto,
+  ) {
     return this.warehousesService.update(companyId, id, updateDto);
   }
 

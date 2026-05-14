@@ -4,6 +4,6 @@ import { WarehouseTransfersService } from './warehouse-transfers.service';
 
 @Module({
   controllers: [WarehouseTransfersController],
-  providers: [WarehouseTransfersService]
+  providers: [WarehouseTransfersService],
 })
 export class WarehouseTransfersModule {}

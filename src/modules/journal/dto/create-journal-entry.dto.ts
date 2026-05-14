@@ -51,7 +51,10 @@ export class CreateJournalEntryDto {
   status?: string; // DRAFT or POSTED — defaults to POSTED
 
   @IsArray()
-  @ArrayMinSize(2, { message: 'A journal entry must have at least 2 lines (one debit and one credit)' })
+  @ArrayMinSize(2, {
+    message:
+      'A journal entry must have at least 2 lines (one debit and one credit)',
+  })
   @ValidateNested({ each: true })
   @Type(() => JournalLineDto)
   lines: JournalLineDto[];

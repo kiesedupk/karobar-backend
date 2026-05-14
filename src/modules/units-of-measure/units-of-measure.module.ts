@@ -4,6 +4,6 @@ import { UnitsOfMeasureService } from './units-of-measure.service';
 
 @Module({
   controllers: [UnitsOfMeasureController],
-  providers: [UnitsOfMeasureService]
+  providers: [UnitsOfMeasureService],
 })
 export class UnitsOfMeasureModule {}

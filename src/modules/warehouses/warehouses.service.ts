@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { CreateWarehouseDto } from './dto/create-warehouse.dto';
 import { UpdateWarehouseDto } from './dto/update-warehouse.dto';
@@ -11,7 +15,8 @@ export class WarehousesService {
     const existing = await prisma.warehouse.findUnique({
       where: { companyId_name: { companyId, name: dto.name } },
     });
-    if (existing) throw new ConflictException('Warehouse with this name already exists');
+    if (existing)
+      throw new ConflictException('Warehouse with this name already exists');
 
     return prisma.warehouse.create({
       data: { ...dto, companyId },
@@ -21,7 +26,7 @@ export class WarehousesService {
   async findAll(companyId: string, page = 1, limit = 20, search?: string) {
     const skip = (page - 1) * limit;
     const where: any = { companyId };
-    
+
     if (search) {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
@@ -66,7 +71,9 @@ export class WarehousesService {
         where: { companyId_name: { companyId, name: dto.name } },
       });
       if (existing && existing.id !== id) {
-        throw new ConflictException('Another warehouse with this name already exists');
+        throw new ConflictException(
+          'Another warehouse with this name already exists',
+        );
       }
     }
 

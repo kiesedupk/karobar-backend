@@ -1,12 +1,19 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
-import { StockInDto, StockOutDto, StockAdjustmentDto } from './dto/stock-transaction.dto';
+import {
+  StockInDto,
+  StockOutDto,
+  StockAdjustmentDto,
+} from './dto/stock-transaction.dto';
 
 const prisma = new PrismaClient();
 
 @Injectable()
 export class StockTransactionsService {
-
   // ========================================
   // STOCK IN — Add inventory to a warehouse
   // ========================================
@@ -79,7 +86,11 @@ export class StockTransactionsService {
           entity: 'StockTransaction',
           entityId: transaction.id,
           description: `Stock In: ${dto.quantity} x ${product.name} → Warehouse ${dto.warehouseId}`,
-          changes: JSON.stringify({ previousQty, newQty, quantity: dto.quantity }),
+          changes: JSON.stringify({
+            previousQty,
+            newQty,
+            quantity: dto.quantity,
+          }),
         },
       });
 
@@ -155,7 +166,11 @@ export class StockTransactionsService {
           entity: 'StockTransaction',
           entityId: transaction.id,
           description: `Stock Out: ${dto.quantity} x ${product.name} ← Warehouse ${dto.warehouseId}`,
-          changes: JSON.stringify({ previousQty, newQty, quantity: dto.quantity }),
+          changes: JSON.stringify({
+            previousQty,
+            newQty,
+            quantity: dto.quantity,
+          }),
         },
       });
 
@@ -236,7 +251,12 @@ export class StockTransactionsService {
           entity: 'StockTransaction',
           entityId: transaction.id,
           description: `Adjustment: ${product.name} in Warehouse — ${previousQty} → ${dto.newQuantity} (${difference >= 0 ? '+' : ''}${difference}). Reason: ${dto.reason}`,
-          changes: JSON.stringify({ previousQty, newQty: dto.newQuantity, difference, reason: dto.reason }),
+          changes: JSON.stringify({
+            previousQty,
+            newQty: dto.newQuantity,
+            difference,
+            reason: dto.reason,
+          }),
         },
       });
 

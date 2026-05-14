@@ -1,9 +1,4 @@
-import {
-  IsOptional,
-  IsString,
-  IsBoolean,
-  IsIn,
-} from 'class-validator';
+import { IsOptional, IsString, IsBoolean, IsIn } from 'class-validator';
 
 const ACCOUNT_TYPES = ['ASSET', 'LIABILITY', 'EQUITY', 'REVENUE', 'EXPENSE'];
 
@@ -14,7 +9,9 @@ export class UpdateAccountDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(ACCOUNT_TYPES, { message: 'type must be one of: ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE' })
+  @IsIn(ACCOUNT_TYPES, {
+    message: 'type must be one of: ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE',
+  })
   type?: string;
 
   @IsOptional()

@@ -46,7 +46,13 @@ export class AuditService {
    */
   async findAll(
     companyId: string,
-    options?: { page?: number; limit?: number; entity?: string; action?: string; userId?: string },
+    options?: {
+      page?: number;
+      limit?: number;
+      entity?: string;
+      action?: string;
+      userId?: string;
+    },
   ) {
     const page = options?.page || 1;
     const limit = Math.min(options?.limit || 50, 200);

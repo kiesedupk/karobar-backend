@@ -1,4 +1,12 @@
-import { IsString, IsNotEmpty, IsOptional, IsArray, ValidateNested, IsNumber, IsDateString } from 'class-validator';
+import {
+  IsString,
+  IsNotEmpty,
+  IsOptional,
+  IsArray,
+  ValidateNested,
+  IsNumber,
+  IsDateString,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class PurchaseBillItemDto {

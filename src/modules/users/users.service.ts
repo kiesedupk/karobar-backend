@@ -34,14 +34,26 @@ export class UsersService {
 
   async findAll() {
     return this.prisma.user.findMany({
-      select: { id: true, email: true, firstName: true, lastName: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+      },
     });
   }
 
   async findOne(id: string) {
     return this.prisma.user.findUnique({
       where: { id },
-      select: { id: true, email: true, firstName: true, lastName: true, isActive: true },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+      },
     });
   }
 }

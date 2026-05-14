@@ -10,7 +10,9 @@ import { RefreshJwtStrategy } from './strategies/refresh.strategy';
   imports: [
     PassportModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET || 'super-secret-jwt-key-change-me-in-production',
+      secret:
+        process.env.JWT_SECRET ||
+        'super-secret-jwt-key-change-me-in-production',
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN || '15m') as any },
     }),
   ],

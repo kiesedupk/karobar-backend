@@ -1,6 +1,9 @@
 import PDFDocument from 'pdfkit';
 
-export async function generateInvoicePdfBuffer(invoice: any, company: any): Promise<Buffer> {
+export async function generateInvoicePdfBuffer(
+  invoice: any,
+  company: any,
+): Promise<Buffer> {
   return new Promise((resolve, reject) => {
     const doc = new PDFDocument({ margin: 50, size: 'A4' });
     const chunks: Buffer[] = [];
@@ -14,30 +17,58 @@ export async function generateInvoicePdfBuffer(invoice: any, company: any): Prom
 
     // Header Background
     doc.rect(0, 0, 612, 100).fill(primaryColor);
-    
+
     // Branding
-    doc.fillColor('#FFFFFF').fontSize(24).font('Helvetica-Bold').text(company.name || 'Karobar SaaS', 50, 30);
-    doc.fontSize(10).font('Helvetica').text(company.address || 'Business Address Here', 50, 60);
+    doc
+      .fillColor('#FFFFFF')
+      .fontSize(24)
+      .font('Helvetica-Bold')
+      .text(company.name || 'Karobar SaaS', 50, 30);
+    doc
+      .fontSize(10)
+      .font('Helvetica')
+      .text(company.address || 'Business Address Here', 50, 60);
     doc.text(`Phone: ${company.phone || '+92 000 0000'}`, 50, 75);
 
-    doc.fontSize(30).font('Helvetica-Bold').text('INVOICE', 400, 40, { align: 'right' });
+    doc
+      .fontSize(30)
+      .font('Helvetica-Bold')
+      .text('INVOICE', 400, 40, { align: 'right' });
 
     // Move down for billing info
     doc.moveDown(5);
-    doc.fillColor('#000000').fontSize(12).font('Helvetica-Bold').text('BILL TO:', 50, 130);
-    doc.fontSize(11).font('Helvetica').text(invoice.customer?.name || 'Guest Customer', 50, 150);
-    doc.fontSize(10).fillColor(secondaryColor).text(invoice.customer?.address || 'N/A', 50, 165, { width: 250 });
+    doc
+      .fillColor('#000000')
+      .fontSize(12)
+      .font('Helvetica-Bold')
+      .text('BILL TO:', 50, 130);
+    doc
+      .fontSize(11)
+      .font('Helvetica')
+      .text(invoice.customer?.name || 'Guest Customer', 50, 150);
+    doc
+      .fontSize(10)
+      .fillColor(secondaryColor)
+      .text(invoice.customer?.address || 'N/A', 50, 165, { width: 250 });
     doc.text(`Email: ${invoice.customer?.email || 'N/A'}`, 50, 195);
 
     // Invoice Meta
-    doc.fillColor('#000000').fontSize(10).font('Helvetica-Bold').text('Invoice #:', 400, 130);
+    doc
+      .fillColor('#000000')
+      .fontSize(10)
+      .font('Helvetica-Bold')
+      .text('Invoice #:', 400, 130);
     doc.font('Helvetica').text(invoice.invoiceNumber, 480, 130);
-    
+
     doc.font('Helvetica-Bold').text('Date:', 400, 145);
-    doc.font('Helvetica').text(new Date(invoice.issueDate).toLocaleDateString(), 480, 145);
+    doc
+      .font('Helvetica')
+      .text(new Date(invoice.issueDate).toLocaleDateString(), 480, 145);
 
     doc.font('Helvetica-Bold').text('Due Date:', 400, 160);
-    doc.font('Helvetica').text(new Date(invoice.dueDate).toLocaleDateString(), 480, 160);
+    doc
+      .font('Helvetica')
+      .text(new Date(invoice.dueDate).toLocaleDateString(), 480, 160);
 
     doc.font('Helvetica-Bold').text('Status:', 400, 175);
     doc.font('Helvetica').text(invoice.status, 480, 175);
@@ -55,7 +86,7 @@ export async function generateInvoicePdfBuffer(invoice: any, company: any): Prom
     // Table Rows
     let rowY = tableTop + 25;
     doc.fillColor('#333333').font('Helvetica');
-    
+
     (invoice.items || []).forEach((item: any, i: number) => {
       // Draw zebra striping
       if (i % 2 === 1) {
@@ -66,36 +97,83 @@ export async function generateInvoicePdfBuffer(invoice: any, company: any): Prom
       doc.text(String(i + 1), 60, rowY);
       doc.text(item.description, 100, rowY, { width: 180 });
       doc.text(item.quantity, 300, rowY, { width: 40, align: 'right' });
-      doc.text(parseFloat(item.unitPrice).toLocaleString(), 350, rowY, { width: 80, align: 'right' });
-      doc.text(parseFloat(item.totalAmount).toLocaleString(), 450, rowY, { width: 90, align: 'right' });
-      
+      doc.text(parseFloat(item.unitPrice).toLocaleString(), 350, rowY, {
+        width: 80,
+        align: 'right',
+      });
+      doc.text(parseFloat(item.totalAmount).toLocaleString(), 450, rowY, {
+        width: 90,
+        align: 'right',
+      });
+
       rowY += 18;
     });
 
     // Summary
     const summaryY = rowY + 20;
     doc.moveTo(350, summaryY).lineTo(550, summaryY).stroke('#EEEEEE');
-    
-    doc.fontSize(10).font('Helvetica-Bold').text('Subtotal:', 350, summaryY + 10);
-    doc.font('Helvetica').text(`Rs ${parseFloat(invoice.subTotal).toLocaleString()}`, 450, summaryY + 10, { width: 90, align: 'right' });
+
+    doc
+      .fontSize(10)
+      .font('Helvetica-Bold')
+      .text('Subtotal:', 350, summaryY + 10);
+    doc
+      .font('Helvetica')
+      .text(
+        `Rs ${parseFloat(invoice.subTotal).toLocaleString()}`,
+        450,
+        summaryY + 10,
+        { width: 90, align: 'right' },
+      );
 
     doc.font('Helvetica-Bold').text('Tax:', 350, summaryY + 25);
-    doc.font('Helvetica').text(`Rs ${parseFloat(invoice.taxAmount).toLocaleString()}`, 450, summaryY + 25, { width: 90, align: 'right' });
+    doc
+      .font('Helvetica')
+      .text(
+        `Rs ${parseFloat(invoice.taxAmount).toLocaleString()}`,
+        450,
+        summaryY + 25,
+        { width: 90, align: 'right' },
+      );
 
     if (parseFloat(invoice.discountAmount) > 0) {
       doc.font('Helvetica-Bold').text('Discount:', 350, summaryY + 40);
-      doc.font('Helvetica').text(`-Rs ${parseFloat(invoice.discountAmount).toLocaleString()}`, 450, summaryY + 40, { width: 90, align: 'right' });
+      doc
+        .font('Helvetica')
+        .text(
+          `-Rs ${parseFloat(invoice.discountAmount).toLocaleString()}`,
+          450,
+          summaryY + 40,
+          { width: 90, align: 'right' },
+        );
     }
 
     // Final Total
     const totalBoxY = summaryY + 60;
     doc.rect(350, totalBoxY, 200, 25).fill(primaryColor);
-    doc.fillColor('#FFFFFF').fontSize(12).font('Helvetica-Bold').text('TOTAL:', 365, totalBoxY + 7);
-    doc.text(`Rs ${parseFloat(invoice.totalAmount).toLocaleString()}`, 450, totalBoxY + 7, { width: 90, align: 'right' });
+    doc
+      .fillColor('#FFFFFF')
+      .fontSize(12)
+      .font('Helvetica-Bold')
+      .text('TOTAL:', 365, totalBoxY + 7);
+    doc.text(
+      `Rs ${parseFloat(invoice.totalAmount).toLocaleString()}`,
+      450,
+      totalBoxY + 7,
+      { width: 90, align: 'right' },
+    );
 
     // Footer
-    doc.fillColor('#999999').fontSize(8).text('Thank you for your business!', 0, 780, { align: 'center' });
-    doc.text(`Generated by Karobar SaaS on ${new Date().toLocaleString()}`, 0, 792, { align: 'center' });
+    doc
+      .fillColor('#999999')
+      .fontSize(8)
+      .text('Thank you for your business!', 0, 780, { align: 'center' });
+    doc.text(
+      `Generated by Karobar SaaS on ${new Date().toLocaleString()}`,
+      0,
+      792,
+      { align: 'center' },
+    );
 
     doc.end();
   });

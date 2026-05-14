@@ -20,15 +20,20 @@ export class InvoiceCronService {
     // 1. Mark overdue invoices across all companies
     try {
       const overdueResult = await this.invoicesService.markOverdueInvoices();
-      this.logger.log(`✅ Overdue scan: ${overdueResult.count} invoice(s) marked as overdue`);
+      this.logger.log(
+        `✅ Overdue scan: ${overdueResult.count} invoice(s) marked as overdue`,
+      );
     } catch (err: any) {
       this.logger.error(`❌ Overdue scan failed: ${err.message}`);
     }
 
     // 2. Generate recurring invoices across all companies
     try {
-      const recurringResult = await this.invoicesService.generateDueRecurringInvoices();
-      this.logger.log(`✅ Recurring generation: ${recurringResult.generated.length} invoice(s) generated`);
+      const recurringResult =
+        await this.invoicesService.generateDueRecurringInvoices();
+      this.logger.log(
+        `✅ Recurring generation: ${recurringResult.generated.length} invoice(s) generated`,
+      );
     } catch (err: any) {
       this.logger.error(`❌ Recurring generation failed: ${err.message}`);
     }

@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Query,
-  Param,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Query, Param, UseGuards } from '@nestjs/common';
 import { ReportsService } from './reports.service';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
@@ -26,7 +20,10 @@ export class ReportsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.reportsService.getTrialBalance(companyId, { startDate, endDate });
+    return this.reportsService.getTrialBalance(companyId, {
+      startDate,
+      endDate,
+    });
   }
 
   /**
@@ -40,7 +37,10 @@ export class ReportsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.reportsService.getProfitAndLoss(companyId, { startDate, endDate });
+    return this.reportsService.getProfitAndLoss(companyId, {
+      startDate,
+      endDate,
+    });
   }
 
   /**
@@ -54,7 +54,10 @@ export class ReportsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.reportsService.getBalanceSheet(companyId, { startDate, endDate });
+    return this.reportsService.getBalanceSheet(companyId, {
+      startDate,
+      endDate,
+    });
   }
 
   /**
@@ -68,7 +71,10 @@ export class ReportsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.reportsService.getCashFlowStatement(companyId, { startDate, endDate });
+    return this.reportsService.getCashFlowStatement(companyId, {
+      startDate,
+      endDate,
+    });
   }
 
   /**
@@ -83,6 +89,9 @@ export class ReportsController {
     @Query('startDate') startDate?: string,
     @Query('endDate') endDate?: string,
   ) {
-    return this.reportsService.getAccountLedger(companyId, accountId, { startDate, endDate });
+    return this.reportsService.getAccountLedger(companyId, accountId, {
+      startDate,
+      endDate,
+    });
   }
 }

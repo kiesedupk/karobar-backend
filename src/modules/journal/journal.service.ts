@@ -23,14 +23,16 @@ export class JournalService {
   // ================================================================
   async createJournalEntry(dto: CreateJournalEntryDto) {
     const { companyId, date, reference, description, status, lines } = dto;
-    
+
     // Check if period is closed
     await this.periodsService.checkLock(companyId, date || new Date());
 
     // --- VALIDATION LAYER ---
 
     // 1. Company must exist
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new NotFoundException('Company not found');
     }
@@ -41,13 +43,17 @@ export class JournalService {
         where: { companyId_reference: { companyId, reference } },
       });
       if (existingRef) {
-        throw new ConflictException(`Journal entry with reference "${reference}" already exists`);
+        throw new ConflictException(
+          `Journal entry with reference "${reference}" already exists`,
+        );
       }
     }
 
     // 3. At least 2 lines required
     if (lines.length < 2) {
-      throw new BadRequestException('A journal entry must have at least 2 lines');
+      throw new BadRequestException(
+        'A journal entry must have at least 2 lines',
+      );
     }
 
     // 4. Each line must have either debit OR credit, not both, and not zero for both
@@ -76,7 +82,7 @@ export class JournalService {
     if (!debitsDecimal.equals(creditsDecimal)) {
       throw new BadRequestException(
         `Journal entry is unbalanced. Total Debits (${debitsDecimal.toFixed(2)}) ≠ Total Credits (${creditsDecimal.toFixed(2)}). ` +
-        `Difference: ${debitsDecimal.minus(creditsDecimal).abs().toFixed(2)}`,
+          `Difference: ${debitsDecimal.minus(creditsDecimal).abs().toFixed(2)}`,
       );
     }
 
@@ -84,13 +90,21 @@ export class JournalService {
     const accountIds = [...new Set(lines.map((l) => l.accountId))];
     const accounts = await this.prisma.account.findMany({
       where: { id: { in: accountIds } },
-      select: { id: true, companyId: true, isActive: true, code: true, name: true },
+      select: {
+        id: true,
+        companyId: true,
+        isActive: true,
+        code: true,
+        name: true,
+      },
     });
 
     if (accounts.length !== accountIds.length) {
       const foundIds = new Set(accounts.map((a) => a.id));
       const missingIds = accountIds.filter((id) => !foundIds.has(id));
-      throw new NotFoundException(`Account(s) not found: ${missingIds.join(', ')}`);
+      throw new NotFoundException(
+        `Account(s) not found: ${missingIds.join(', ')}`,
+      );
     }
 
     for (const account of accounts) {
@@ -188,7 +202,9 @@ export class JournalService {
     }
 
     if (entry.companyId !== companyId) {
-      throw new BadRequestException('Journal entry does not belong to this company');
+      throw new BadRequestException(
+        'Journal entry does not belong to this company',
+      );
     }
 
     // Compute totals for the response
@@ -215,7 +231,13 @@ export class JournalService {
   // ================================================================
   async listJournalEntries(
     companyId: string,
-    options: { page?: number; limit?: number; status?: string; startDate?: string; endDate?: string },
+    options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      startDate?: string;
+      endDate?: string;
+    },
   ) {
     const page = options.page || 1;
     const limit = Math.min(options.limit || 20, 100); // Cap at 100
@@ -277,7 +299,9 @@ export class JournalService {
     }
 
     if (entry.companyId !== companyId) {
-      throw new BadRequestException('Journal entry does not belong to this company');
+      throw new BadRequestException(
+        'Journal entry does not belong to this company',
+      );
     }
 
     if (entry.status === 'VOIDED') {
@@ -288,7 +312,9 @@ export class JournalService {
     await this.periodsService.checkLock(companyId, entry.date);
 
     if (entry.status === 'DRAFT') {
-      throw new BadRequestException('Draft entries cannot be voided. Delete them instead.');
+      throw new BadRequestException(
+        'Draft entries cannot be voided. Delete them instead.',
+      );
     }
 
     // Transaction: Void the entry and reverse account balances
@@ -341,11 +367,15 @@ export class JournalService {
     }
 
     if (entry.companyId !== companyId) {
-      throw new BadRequestException('Journal entry does not belong to this company');
+      throw new BadRequestException(
+        'Journal entry does not belong to this company',
+      );
     }
 
     if (entry.status !== 'DRAFT') {
-      throw new BadRequestException(`Cannot post: Entry is already "${entry.status}"`);
+      throw new BadRequestException(
+        `Cannot post: Entry is already "${entry.status}"`,
+      );
     }
 
     // Check if period is closed
@@ -407,7 +437,9 @@ export class JournalService {
     }
 
     if (entry.companyId !== companyId) {
-      throw new BadRequestException('Journal entry does not belong to this company');
+      throw new BadRequestException(
+        'Journal entry does not belong to this company',
+      );
     }
 
     if (entry.status !== 'DRAFT') {
@@ -420,7 +452,9 @@ export class JournalService {
     await this.periodsService.checkLock(companyId, entry.date);
 
     await this.prisma.journalEntry.delete({ where: { id } });
-    return { message: `Draft journal entry "${entry.reference || entry.id}" has been deleted` };
+    return {
+      message: `Draft journal entry "${entry.reference || entry.id}" has been deleted`,
+    };
   }
 
   // ================================================================
@@ -520,7 +554,9 @@ export class JournalService {
         credit: new Decimal(0),
       };
       existing.debit = existing.debit.plus(new Decimal(line.debit.toFixed(2)));
-      existing.credit = existing.credit.plus(new Decimal(line.credit.toFixed(2)));
+      existing.credit = existing.credit.plus(
+        new Decimal(line.credit.toFixed(2)),
+      );
       adjustments.set(line.accountId, existing);
     }
 

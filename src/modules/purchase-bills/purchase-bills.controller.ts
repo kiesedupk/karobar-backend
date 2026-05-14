@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { PurchaseBillsService } from './purchase-bills.service';
 import { CreatePurchaseBillDto } from './dto/create-purchase-bill.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -19,7 +27,11 @@ export class PurchaseBillsController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.billsService.findAll(companyId, page ? +page : 1, limit ? +limit : 20);
+    return this.billsService.findAll(
+      companyId,
+      page ? +page : 1,
+      limit ? +limit : 20,
+    );
   }
 
   @Get(':id')

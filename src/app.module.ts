@@ -1,4 +1,9 @@
-import { Module, NestModule, MiddlewareConsumer, RequestMethod } from '@nestjs/common';
+import {
+  Module,
+  NestModule,
+  MiddlewareConsumer,
+  RequestMethod,
+} from '@nestjs/common';
 import { LoggerModule } from 'nestjs-pino';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
@@ -29,15 +34,28 @@ import { PurchaseBillsModule } from './modules/purchase-bills/purchase-bills.mod
 
 @Module({
   imports: [
-    PrismaModule, AuthModule, UsersModule, CompaniesModule,
-    AccountingModule, JournalModule, InvoicesModule, ReportsModule,
-    CustomersModule, VendorsModule, ExpensesModule, AuditModule,
-    ScheduleModule.forRoot(), BankingModule, PeriodsModule, MailModule,
+    PrismaModule,
+    AuthModule,
+    UsersModule,
+    CompaniesModule,
+    AccountingModule,
+    JournalModule,
+    InvoicesModule,
+    ReportsModule,
+    CustomersModule,
+    VendorsModule,
+    ExpensesModule,
+    AuditModule,
+    ScheduleModule.forRoot(),
+    BankingModule,
+    PeriodsModule,
+    MailModule,
     LoggerModule.forRoot({
       pinoHttp: {
-        transport: process.env.NODE_ENV !== 'production'
-          ? { target: 'pino-pretty', options: { singleLine: true } }
-          : undefined,
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? { target: 'pino-pretty', options: { singleLine: true } }
+            : undefined,
         autoLogging: true,
       },
     }),
@@ -55,8 +73,6 @@ import { PurchaseBillsModule } from './modules/purchase-bills/purchase-bills.mod
 export class AppModule implements NestModule {
   configure(consumer: MiddlewareConsumer) {
     // Apply Multi-Tenant Middleware globally to all routes
-    consumer
-      .apply(TenantMiddleware)
-      .forRoutes('*');
+    consumer.apply(TenantMiddleware).forRoutes('*');
   }
 }

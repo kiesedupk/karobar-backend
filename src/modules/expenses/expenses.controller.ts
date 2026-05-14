@@ -18,7 +18,13 @@ export class ExpensesController {
 
   @Get()
   @Permissions('expense:read')
-  findAll(@Query('companyId') companyId: string, @Query('limit') limit?: string) {
-    return this.expensesService.findAll(companyId, limit ? parseInt(limit) : 50);
+  findAll(
+    @Query('companyId') companyId: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.expensesService.findAll(
+      companyId,
+      limit ? parseInt(limit) : 50,
+    );
   }
 }

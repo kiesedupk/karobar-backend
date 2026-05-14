@@ -49,7 +49,10 @@ export class BankingController {
     @Query('companyId') companyId: string,
     @Query('includeInactive') includeInactive?: string,
   ) {
-    return this.bankingService.listBankAccounts(companyId, includeInactive === 'true');
+    return this.bankingService.listBankAccounts(
+      companyId,
+      includeInactive === 'true',
+    );
   }
 
   /**
@@ -116,7 +119,11 @@ export class BankingController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
     @Query('limit', new DefaultValuePipe(20), ParseIntPipe) limit?: number,
   ) {
-    return this.bankingService.listTransfers(companyId, { page, limit, accountId });
+    return this.bankingService.listTransfers(companyId, {
+      page,
+      limit,
+      accountId,
+    });
   }
 
   // ========================================
@@ -135,7 +142,11 @@ export class BankingController {
     @Query('page', new DefaultValuePipe(1), ParseIntPipe) page?: number,
     @Query('limit', new DefaultValuePipe(30), ParseIntPipe) limit?: number,
   ) {
-    return this.bankingService.getTransactionHistory(id, companyId, { page, limit, type });
+    return this.bankingService.getTransactionHistory(id, companyId, {
+      page,
+      limit,
+      type,
+    });
   }
 
   // ========================================

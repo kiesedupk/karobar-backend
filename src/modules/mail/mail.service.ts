@@ -18,7 +18,12 @@ export class MailService {
     });
   }
 
-  async sendMail(to: string, subject: string, html: string, attachments: any[] = []) {
+  async sendMail(
+    to: string,
+    subject: string,
+    html: string,
+    attachments: any[] = [],
+  ) {
     try {
       const info = await this.transporter.sendMail({
         from: `"${process.env.MAIL_FROM_NAME || 'Karobar SaaS'}" <${process.env.MAIL_FROM_EMAIL || 'noreply@karobar.pk'}>`,

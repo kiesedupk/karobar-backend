@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -22,7 +26,12 @@ export class ProductsService {
     });
   }
 
-  async findAll(companyId: string, page: number = 1, limit: number = 20, search?: string) {
+  async findAll(
+    companyId: string,
+    page: number = 1,
+    limit: number = 20,
+    search?: string,
+  ) {
     const skip = (page - 1) * limit;
 
     const where: Prisma.ProductWhereInput = {
@@ -78,7 +87,7 @@ export class ProductsService {
 
   async update(companyId: string, id: string, dto: UpdateProductDto) {
     await this.findOne(companyId, id); // Verify existence
-    
+
     if (dto.sku) {
       const existing = await this.prisma.product.findUnique({
         where: { companyId_sku: { companyId, sku: dto.sku } },

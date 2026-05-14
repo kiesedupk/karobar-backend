@@ -1,7 +1,15 @@
 import {
-  Controller, Get, Post, Put, Delete,
-  Body, Param, Query, UseGuards,
-  ParseIntPipe, DefaultValuePipe,
+  Controller,
+  Get,
+  Post,
+  Put,
+  Delete,
+  Body,
+  Param,
+  Query,
+  UseGuards,
+  ParseIntPipe,
+  DefaultValuePipe,
 } from '@nestjs/common';
 import { VendorsService } from './vendors.service';
 import { CreateVendorDto, UpdateVendorDto } from './dto/vendor.dto';

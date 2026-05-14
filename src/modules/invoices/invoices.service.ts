@@ -26,36 +26,52 @@ export class InvoicesService {
   // 1. CREATE INVOICE
   // ================================================================
   async createInvoice(dto: CreateInvoiceDto) {
-    const { companyId, customerId, items, notes, globalDiscountAmount, issueDate } = dto;
+    const {
+      companyId,
+      customerId,
+      items,
+      notes,
+      globalDiscountAmount,
+      issueDate,
+    } = dto;
 
     // Check if period is closed
     await this.periodsService.checkLock(companyId, issueDate || new Date());
 
     // Validate company
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) throw new NotFoundException('Company not found');
 
     // Validate customer
-    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
     if (!customer) throw new NotFoundException('Customer not found');
     if (customer.companyId !== companyId) {
       throw new BadRequestException('Customer does not belong to this company');
     }
 
     // Generate invoice number if not provided
-    const invoiceNumber = dto.invoiceNumber || await this.generateInvoiceNumber(companyId);
+    const invoiceNumber =
+      dto.invoiceNumber || (await this.generateInvoiceNumber(companyId));
 
     // Check uniqueness
     const existing = await this.prisma.invoice.findUnique({
       where: { companyId_invoiceNumber: { companyId, invoiceNumber } },
     });
     if (existing) {
-      throw new ConflictException(`Invoice number "${invoiceNumber}" already exists`);
+      throw new ConflictException(
+        `Invoice number "${invoiceNumber}" already exists`,
+      );
     }
 
     // Calculate each line item
     const calculatedItems = items.map((item) => {
-      const lineSubTotal = new Decimal(item.quantity).mul(new Decimal(item.unitPrice));
+      const lineSubTotal = new Decimal(item.quantity).mul(
+        new Decimal(item.unitPrice),
+      );
       const discountRate = new Decimal(item.discountRate || 0);
       const discountAmount = lineSubTotal.mul(discountRate).div(100);
       const afterDiscount = lineSubTotal.minus(discountAmount);
@@ -99,7 +115,10 @@ export class InvoicesService {
 
       if (!recvAccId) {
         const acc = await tx.account.findFirst({
-          where: { companyId, OR: [{ subType: 'RECEIVABLE' }, { code: '1100' }] },
+          where: {
+            companyId,
+            OR: [{ subType: 'RECEIVABLE' }, { code: '1100' }],
+          },
         });
         if (acc) recvAccId = acc.id;
       }
@@ -233,7 +252,9 @@ export class InvoicesService {
           },
         },
         include: {
-          customer: { select: { id: true, name: true, email: true, phone: true } },
+          customer: {
+            select: { id: true, name: true, email: true, phone: true },
+          },
           items: true,
         },
       });
@@ -242,7 +263,7 @@ export class InvoicesService {
       // 5. INVENTORY DEDUCTION — Deduct stock if warehouse is specified
       // ============================================================
       if (dto.warehouseId) {
-        const productItems = items.filter(item => item.productId);
+        const productItems = items.filter((item) => item.productId);
 
         if (productItems.length > 0) {
           let totalCOGS = new Decimal(0);
@@ -260,13 +281,15 @@ export class InvoicesService {
             const warehouseStock = await tx.warehouseStock.findUnique({
               where: {
                 warehouseId_productId: {
-                  warehouseId: dto.warehouseId!,
+                  warehouseId: dto.warehouseId,
                   productId: item.productId!,
                 },
               },
             });
 
-            const previousQty = warehouseStock ? Number(warehouseStock.quantity) : 0;
+            const previousQty = warehouseStock
+              ? Number(warehouseStock.quantity)
+              : 0;
             if (previousQty < Number(qty)) {
               throw new BadRequestException(
                 `Insufficient stock for "${product.name}". Available: ${previousQty}, Required: ${Number(qty)}`,
@@ -291,7 +314,7 @@ export class InvoicesService {
             await tx.stockTransaction.create({
               data: {
                 companyId,
-                warehouseId: dto.warehouseId!,
+                warehouseId: dto.warehouseId,
                 productId: item.productId!,
                 type: 'STOCK_OUT',
                 quantity: -Number(qty),
@@ -314,7 +337,7 @@ export class InvoicesService {
             const availableLayers = await tx.inventoryFifoLayer.findMany({
               where: {
                 companyId,
-                warehouseId: dto.warehouseId!,
+                warehouseId: dto.warehouseId,
                 productId: item.productId!,
                 remainingQty: { gt: 0 },
               },
@@ -325,7 +348,10 @@ export class InvoicesService {
               if (remainingQtyToDeduct.lessThanOrEqualTo(0)) break;
 
               const layerRemaining = new Decimal(layer.remainingQty);
-              const deductQty = Decimal.min(remainingQtyToDeduct, layerRemaining);
+              const deductQty = Decimal.min(
+                remainingQtyToDeduct,
+                layerRemaining,
+              );
               const layerCost = new Decimal(layer.unitCost);
               const costForDeductedQty = deductQty.mul(layerCost);
 
@@ -354,7 +380,9 @@ export class InvoicesService {
 
             // Fallback for missing layers
             if (remainingQtyToDeduct.greaterThan(0)) {
-              const fallbackCost = product.costPrice ? new Decimal(product.costPrice) : new Decimal(0);
+              const fallbackCost = product.costPrice
+                ? new Decimal(product.costPrice)
+                : new Decimal(0);
               const fallbackCOGS = remainingQtyToDeduct.mul(fallbackCost);
               itemCOGS = itemCOGS.plus(fallbackCOGS);
             }
@@ -375,7 +403,10 @@ export class InvoicesService {
 
             // Find Inventory Asset account
             const invAcc = await tx.account.findFirst({
-              where: { companyId, OR: [{ subType: 'INVENTORY' }, { code: '1030' }] },
+              where: {
+                companyId,
+                OR: [{ subType: 'INVENTORY' }, { code: '1030' }],
+              },
             });
             if (invAcc) inventoryAssetAccountId = invAcc.id;
 
@@ -408,20 +439,28 @@ export class InvoicesService {
               });
 
               // Update COGS account balance (EXPENSE: debit increases)
-              const cogsAccount = await tx.account.findUnique({ where: { id: cogsAccountId } });
+              const cogsAccount = await tx.account.findUnique({
+                where: { id: cogsAccountId },
+              });
               if (cogsAccount) {
                 await tx.account.update({
                   where: { id: cogsAccountId },
-                  data: { balance: new Decimal(cogsAccount.balance).plus(totalCOGS) },
+                  data: {
+                    balance: new Decimal(cogsAccount.balance).plus(totalCOGS),
+                  },
                 });
               }
 
               // Update Inventory Asset balance (ASSET: credit decreases)
-              const invAccount = await tx.account.findUnique({ where: { id: inventoryAssetAccountId } });
+              const invAccount = await tx.account.findUnique({
+                where: { id: inventoryAssetAccountId },
+              });
               if (invAccount) {
                 await tx.account.update({
                   where: { id: inventoryAssetAccountId },
-                  data: { balance: new Decimal(invAccount.balance).minus(totalCOGS) },
+                  data: {
+                    balance: new Decimal(invAccount.balance).minus(totalCOGS),
+                  },
                 });
               }
             }
@@ -458,21 +497,28 @@ export class InvoicesService {
   // ================================================================
   // 2. SEND INVOICE (Mark as SENT and auto-post journal entry)
   // ================================================================
-  async sendInvoice(id: string, companyId: string, accountIds?: {
-    receivableAccountId?: string;
-    revenueAccountId?: string;
-    taxAccountId?: string;
-    discountAccountId?: string;
-  }) {
+  async sendInvoice(
+    id: string,
+    companyId: string,
+    accountIds?: {
+      receivableAccountId?: string;
+      revenueAccountId?: string;
+      taxAccountId?: string;
+      discountAccountId?: string;
+    },
+  ) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id },
       include: { items: true, customer: true },
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
-    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.companyId !== companyId)
+      throw new BadRequestException('Invoice does not belong to this company');
     if (invoice.status !== 'DRAFT') {
-      throw new BadRequestException(`Cannot send: Invoice is already "${invoice.status}"`);
+      throw new BadRequestException(
+        `Cannot send: Invoice is already "${invoice.status}"`,
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -555,7 +601,9 @@ export class InvoicesService {
         // Update customer balance (increase receivable)
         await tx.customer.update({
           where: { id: invoice.customerId },
-          data: { balance: new Decimal(invoice.customer.balance).plus(totalAmount) },
+          data: {
+            balance: new Decimal(invoice.customer.balance).plus(totalAmount),
+          },
         });
       }
 
@@ -584,7 +632,15 @@ export class InvoicesService {
   // 3. RECORD PAYMENT
   // ================================================================
   async recordPayment(dto: RecordPaymentDto) {
-    const { companyId, invoiceId, amount, paymentDate, method, reference, notes } = dto;
+    const {
+      companyId,
+      invoiceId,
+      amount,
+      paymentDate,
+      method,
+      reference,
+      notes,
+    } = dto;
 
     // Check if period is closed
     await this.periodsService.checkLock(companyId, paymentDate || new Date());
@@ -595,11 +651,17 @@ export class InvoicesService {
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
-    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.companyId !== companyId)
+      throw new BadRequestException('Invoice does not belong to this company');
 
-    if (invoice.status === 'DRAFT') throw new BadRequestException('Cannot pay a DRAFT invoice. Send it first.');
-    if (invoice.status === 'CANCELLED') throw new BadRequestException('Cannot pay a CANCELLED invoice');
-    if (invoice.status === 'PAID') throw new BadRequestException('Invoice is already fully paid');
+    if (invoice.status === 'DRAFT')
+      throw new BadRequestException(
+        'Cannot pay a DRAFT invoice. Send it first.',
+      );
+    if (invoice.status === 'CANCELLED')
+      throw new BadRequestException('Cannot pay a CANCELLED invoice');
+    if (invoice.status === 'PAID')
+      throw new BadRequestException('Invoice is already fully paid');
 
     const paymentAmount = new Decimal(amount);
     const currentPaid = new Decimal(invoice.paidAmount);
@@ -613,7 +675,9 @@ export class InvoicesService {
     }
 
     const newPaidAmount = currentPaid.plus(paymentAmount);
-    const newStatus = newPaidAmount.greaterThanOrEqualTo(totalAmount) ? 'PAID' : 'PARTIAL';
+    const newStatus = newPaidAmount.greaterThanOrEqualTo(totalAmount)
+      ? 'PAID'
+      : 'PARTIAL';
 
     return this.prisma.$transaction(async (tx) => {
       let journalEntryId: string | null = null;
@@ -630,7 +694,10 @@ export class InvoicesService {
       }
       if (!receivableAccountId) {
         const acc = await tx.account.findFirst({
-          where: { companyId, OR: [{ subType: 'RECEIVABLE' }, { code: '1100' }] },
+          where: {
+            companyId,
+            OR: [{ subType: 'RECEIVABLE' }, { code: '1100' }],
+          },
         });
         if (acc) receivableAccountId = acc.id;
       }
@@ -673,7 +740,9 @@ export class InvoicesService {
         if (cashAccount) {
           await tx.account.update({
             where: { id: cashBankAccountId },
-            data: { balance: new Decimal(cashAccount.balance).plus(paymentAmount) },
+            data: {
+              balance: new Decimal(cashAccount.balance).plus(paymentAmount),
+            },
           });
         }
 
@@ -685,14 +754,18 @@ export class InvoicesService {
         if (recvAccount) {
           await tx.account.update({
             where: { id: receivableAccountId },
-            data: { balance: new Decimal(recvAccount.balance).minus(paymentAmount) },
+            data: {
+              balance: new Decimal(recvAccount.balance).minus(paymentAmount),
+            },
           });
         }
 
         // Decrease customer balance
         await tx.customer.update({
           where: { id: invoice.customerId },
-          data: { balance: new Decimal(invoice.customer.balance).minus(paymentAmount) },
+          data: {
+            balance: new Decimal(invoice.customer.balance).minus(paymentAmount),
+          },
         });
       }
 
@@ -747,9 +820,12 @@ export class InvoicesService {
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
-    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.companyId !== companyId)
+      throw new BadRequestException('Invoice does not belong to this company');
 
-    const balanceDue = new Decimal(invoice.totalAmount).minus(new Decimal(invoice.paidAmount));
+    const balanceDue = new Decimal(invoice.totalAmount).minus(
+      new Decimal(invoice.paidAmount),
+    );
 
     return {
       ...invoice,
@@ -762,7 +838,12 @@ export class InvoicesService {
   // ================================================================
   async listInvoices(
     companyId: string,
-    options: { page?: number; limit?: number; status?: string; customerId?: string },
+    options: {
+      page?: number;
+      limit?: number;
+      status?: string;
+      customerId?: string;
+    },
   ) {
     const page = options.page || 1;
     const limit = Math.min(options.limit || 20, 100);
@@ -803,15 +884,19 @@ export class InvoicesService {
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
-    
+
     // Check if period is closed
     await this.periodsService.checkLock(companyId, invoice.issueDate);
-    
-    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
-    if (invoice.status === 'CANCELLED') throw new BadRequestException('Invoice is already cancelled');
+
+    if (invoice.companyId !== companyId)
+      throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.status === 'CANCELLED')
+      throw new BadRequestException('Invoice is already cancelled');
 
     if (invoice.payments.length > 0) {
-      throw new BadRequestException('Cannot cancel an invoice with recorded payments. Void the payments first.');
+      throw new BadRequestException(
+        'Cannot cancel an invoice with recorded payments. Void the payments first.',
+      );
     }
 
     return this.prisma.$transaction(async (tx) => {
@@ -896,10 +981,17 @@ export class InvoicesService {
         for (const [productId, qtyReturned] of productReturns) {
           // 2. Add to WarehouseStock
           const existingStock = await tx.warehouseStock.findUnique({
-            where: { warehouseId_productId: { warehouseId: invoice.warehouseId, productId } },
+            where: {
+              warehouseId_productId: {
+                warehouseId: invoice.warehouseId,
+                productId,
+              },
+            },
           });
 
-          const previousQty = existingStock ? Number(existingStock.quantity) : 0;
+          const previousQty = existingStock
+            ? Number(existingStock.quantity)
+            : 0;
           const newQty = previousQty + Number(qtyReturned);
 
           if (existingStock) {
@@ -946,7 +1038,10 @@ export class InvoicesService {
       const cancelled = await tx.invoice.update({
         where: { id },
         data: { status: 'CANCELLED' },
-        include: { customer: { select: { id: true, name: true } }, items: true },
+        include: {
+          customer: { select: { id: true, name: true } },
+          items: true,
+        },
       });
 
       return {
@@ -971,9 +1066,12 @@ export class InvoicesService {
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
-    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.companyId !== companyId)
+      throw new BadRequestException('Invoice does not belong to this company');
 
-    const balanceDue = new Decimal(invoice.totalAmount).minus(new Decimal(invoice.paidAmount));
+    const balanceDue = new Decimal(invoice.totalAmount).minus(
+      new Decimal(invoice.paidAmount),
+    );
 
     return {
       // Company (seller) info
@@ -1061,14 +1159,29 @@ export class InvoicesService {
   // ================================================================
 
   async createRecurring(dto: any) {
-    const { companyId, customerId, frequency, intervalDays, nextIssueDate, endDate, daysDueAfter, templateItems, notes } = dto;
+    const {
+      companyId,
+      customerId,
+      frequency,
+      intervalDays,
+      nextIssueDate,
+      endDate,
+      daysDueAfter,
+      templateItems,
+      notes,
+    } = dto;
 
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) throw new NotFoundException('Company not found');
 
-    const customer = await this.prisma.customer.findUnique({ where: { id: customerId } });
+    const customer = await this.prisma.customer.findUnique({
+      where: { id: customerId },
+    });
     if (!customer) throw new NotFoundException('Customer not found');
-    if (customer.companyId !== companyId) throw new BadRequestException('Customer does not belong to this company');
+    if (customer.companyId !== companyId)
+      throw new BadRequestException('Customer does not belong to this company');
 
     const recurring = await this.prisma.recurringInvoice.create({
       data: {
@@ -1079,7 +1192,7 @@ export class InvoicesService {
         nextIssueDate: new Date(nextIssueDate),
         endDate: endDate ? new Date(endDate) : null,
         daysDueAfter: daysDueAfter || 30,
-        templateItems: templateItems as any,
+        templateItems: templateItems,
         notes: notes || null,
         isActive: true,
       },
@@ -1110,17 +1223,22 @@ export class InvoicesService {
   }
 
   async updateRecurring(id: string, companyId: string, dto: any) {
-    const existing = await this.prisma.recurringInvoice.findUnique({ where: { id } });
+    const existing = await this.prisma.recurringInvoice.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('Recurring invoice not found');
-    if (existing.companyId !== companyId) throw new BadRequestException('Does not belong to this company');
+    if (existing.companyId !== companyId)
+      throw new BadRequestException('Does not belong to this company');
 
     const data: any = {};
     if (dto.frequency !== undefined) data.frequency = dto.frequency;
     if (dto.intervalDays !== undefined) data.intervalDays = dto.intervalDays;
-    if (dto.nextIssueDate !== undefined) data.nextIssueDate = new Date(dto.nextIssueDate);
-    if (dto.endDate !== undefined) data.endDate = dto.endDate ? new Date(dto.endDate) : null;
+    if (dto.nextIssueDate !== undefined)
+      data.nextIssueDate = new Date(dto.nextIssueDate);
+    if (dto.endDate !== undefined)
+      data.endDate = dto.endDate ? new Date(dto.endDate) : null;
     if (dto.daysDueAfter !== undefined) data.daysDueAfter = dto.daysDueAfter;
-    if (dto.templateItems !== undefined) data.templateItems = dto.templateItems as any;
+    if (dto.templateItems !== undefined) data.templateItems = dto.templateItems;
     if (dto.notes !== undefined) data.notes = dto.notes;
     if (dto.isActive !== undefined) data.isActive = dto.isActive;
 
@@ -1134,9 +1252,12 @@ export class InvoicesService {
   }
 
   async deleteRecurring(id: string, companyId: string) {
-    const existing = await this.prisma.recurringInvoice.findUnique({ where: { id } });
+    const existing = await this.prisma.recurringInvoice.findUnique({
+      where: { id },
+    });
     if (!existing) throw new NotFoundException('Recurring invoice not found');
-    if (existing.companyId !== companyId) throw new BadRequestException('Does not belong to this company');
+    if (existing.companyId !== companyId)
+      throw new BadRequestException('Does not belong to this company');
 
     await this.prisma.recurringInvoice.update({
       where: { id },
@@ -1198,7 +1319,11 @@ export class InvoicesService {
         });
 
         // Advance nextIssueDate
-        const nextDate = this.calculateNextDate(issueDate, template.frequency, template.intervalDays);
+        const nextDate = this.calculateNextDate(
+          issueDate,
+          template.frequency,
+          template.intervalDays,
+        );
 
         await this.prisma.recurringInvoice.update({
           where: { id: template.id },
@@ -1217,7 +1342,10 @@ export class InvoicesService {
         });
       } catch (err: any) {
         // Log error but continue with other templates
-        console.error(`Failed to generate recurring invoice ${template.id}:`, err.message);
+        console.error(
+          `Failed to generate recurring invoice ${template.id}:`,
+          err.message,
+        );
       }
     }
 
@@ -1227,7 +1355,11 @@ export class InvoicesService {
     };
   }
 
-  private calculateNextDate(current: Date, frequency: string, intervalDays?: number | null): Date {
+  private calculateNextDate(
+    current: Date,
+    frequency: string,
+    intervalDays?: number | null,
+  ): Date {
     const next = new Date(current);
     switch (frequency) {
       case 'WEEKLY':
@@ -1314,12 +1446,22 @@ export class InvoicesService {
     });
 
     // Aging buckets
-    const buckets = { '1-30': [] as any[], '31-60': [] as any[], '61-90': [] as any[], '90+': [] as any[] };
+    const buckets = {
+      '1-30': [] as any[],
+      '31-60': [] as any[],
+      '61-90': [] as any[],
+      '90+': [] as any[],
+    };
     let totalOverdue = new Decimal(0);
 
     for (const inv of overdueInvoices) {
-      const balanceDue = new Decimal(inv.totalAmount).minus(new Decimal(inv.paidAmount));
-      const daysOverdue = Math.floor((now.getTime() - new Date(inv.dueDate!).getTime()) / (1000 * 60 * 60 * 24));
+      const balanceDue = new Decimal(inv.totalAmount).minus(
+        new Decimal(inv.paidAmount),
+      );
+      const daysOverdue = Math.floor(
+        (now.getTime() - new Date(inv.dueDate!).getTime()) /
+          (1000 * 60 * 60 * 24),
+      );
       totalOverdue = totalOverdue.plus(balanceDue);
 
       const entry = {
@@ -1357,18 +1499,28 @@ export class InvoicesService {
   async getPaymentHistory(invoiceId: string, companyId: string) {
     const invoice = await this.prisma.invoice.findUnique({
       where: { id: invoiceId },
-      select: { id: true, companyId: true, invoiceNumber: true, totalAmount: true, paidAmount: true, status: true },
+      select: {
+        id: true,
+        companyId: true,
+        invoiceNumber: true,
+        totalAmount: true,
+        paidAmount: true,
+        status: true,
+      },
     });
 
     if (!invoice) throw new NotFoundException('Invoice not found');
-    if (invoice.companyId !== companyId) throw new BadRequestException('Invoice does not belong to this company');
+    if (invoice.companyId !== companyId)
+      throw new BadRequestException('Invoice does not belong to this company');
 
     const payments = await this.prisma.payment.findMany({
       where: { invoiceId },
       orderBy: { paymentDate: 'desc' },
     });
 
-    const balanceDue = new Decimal(invoice.totalAmount).minus(new Decimal(invoice.paidAmount));
+    const balanceDue = new Decimal(invoice.totalAmount).minus(
+      new Decimal(invoice.paidAmount),
+    );
 
     return {
       invoiceNumber: invoice.invoiceNumber,
@@ -1403,11 +1555,13 @@ export class InvoicesService {
       throw new BadRequestException('Customer does not have an email address');
     }
 
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new NotFoundException('Company not found');
     }
-    
+
     // 1. Generate PDF Buffer
     const pdfBuffer = await generateInvoicePdfBuffer(invoice, company);
 
@@ -1440,6 +1594,8 @@ export class InvoicesService {
       description: `Invoice ${invoice.invoiceNumber} sent to ${invoice.customer.email}`,
     });
 
-    return { message: `Invoice sent successfully to ${invoice.customer.email}` };
+    return {
+      message: `Invoice sent successfully to ${invoice.customer.email}`,
+    };
   }
 }

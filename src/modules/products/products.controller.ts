@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { ProductsService } from './products.service';
 import { CreateProductDto } from './dto/create-product.dto';
 import { UpdateProductDto } from './dto/update-product.dto';
@@ -10,7 +20,10 @@ export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
   @Post()
-  create(@Body('companyId') companyId: string, @Body() createDto: CreateProductDto) {
+  create(
+    @Body('companyId') companyId: string,
+    @Body() createDto: CreateProductDto,
+  ) {
     return this.productsService.create(companyId, createDto);
   }
 
@@ -21,7 +34,12 @@ export class ProductsController {
     @Query('limit') limit?: string,
     @Query('search') search?: string,
   ) {
-    return this.productsService.findAll(companyId, page ? Number(page) : 1, limit ? Number(limit) : 20, search);
+    return this.productsService.findAll(
+      companyId,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 20,
+      search,
+    );
   }
 
   @Get(':id')
@@ -30,7 +48,11 @@ export class ProductsController {
   }
 
   @Patch(':id')
-  update(@Query('companyId') companyId: string, @Param('id') id: string, @Body() updateDto: UpdateProductDto) {
+  update(
+    @Query('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateProductDto,
+  ) {
     return this.productsService.update(companyId, id, updateDto);
   }
 

@@ -16,50 +16,242 @@ import { Decimal } from '@prisma/client/runtime/library';
 const DEFAULT_CHART_OF_ACCOUNTS = [
   // ASSETS (1000 series)
   { code: '1000', name: 'Assets', type: 'ASSET', subType: 'HEADER' },
-  { code: '1010', name: 'Cash on Hand', type: 'ASSET', subType: 'CASH', parentCode: '1000' },
-  { code: '1020', name: 'Bank Accounts', type: 'ASSET', subType: 'BANK', parentCode: '1000' },
-  { code: '1100', name: 'Accounts Receivable', type: 'ASSET', subType: 'RECEIVABLE', parentCode: '1000' },
-  { code: '1200', name: 'Inventory', type: 'ASSET', subType: 'INVENTORY', parentCode: '1000' },
-  { code: '1300', name: 'Prepaid Expenses', type: 'ASSET', subType: 'PREPAID', parentCode: '1000' },
-  { code: '1500', name: 'Fixed Assets', type: 'ASSET', subType: 'FIXED', parentCode: '1000' },
-  { code: '1510', name: 'Furniture & Equipment', type: 'ASSET', subType: 'FIXED', parentCode: '1500' },
-  { code: '1520', name: 'Vehicles', type: 'ASSET', subType: 'FIXED', parentCode: '1500' },
-  { code: '1590', name: 'Accumulated Depreciation', type: 'ASSET', subType: 'CONTRA', parentCode: '1500' },
+  {
+    code: '1010',
+    name: 'Cash on Hand',
+    type: 'ASSET',
+    subType: 'CASH',
+    parentCode: '1000',
+  },
+  {
+    code: '1020',
+    name: 'Bank Accounts',
+    type: 'ASSET',
+    subType: 'BANK',
+    parentCode: '1000',
+  },
+  {
+    code: '1100',
+    name: 'Accounts Receivable',
+    type: 'ASSET',
+    subType: 'RECEIVABLE',
+    parentCode: '1000',
+  },
+  {
+    code: '1200',
+    name: 'Inventory',
+    type: 'ASSET',
+    subType: 'INVENTORY',
+    parentCode: '1000',
+  },
+  {
+    code: '1300',
+    name: 'Prepaid Expenses',
+    type: 'ASSET',
+    subType: 'PREPAID',
+    parentCode: '1000',
+  },
+  {
+    code: '1500',
+    name: 'Fixed Assets',
+    type: 'ASSET',
+    subType: 'FIXED',
+    parentCode: '1000',
+  },
+  {
+    code: '1510',
+    name: 'Furniture & Equipment',
+    type: 'ASSET',
+    subType: 'FIXED',
+    parentCode: '1500',
+  },
+  {
+    code: '1520',
+    name: 'Vehicles',
+    type: 'ASSET',
+    subType: 'FIXED',
+    parentCode: '1500',
+  },
+  {
+    code: '1590',
+    name: 'Accumulated Depreciation',
+    type: 'ASSET',
+    subType: 'CONTRA',
+    parentCode: '1500',
+  },
 
   // LIABILITIES (2000 series)
   { code: '2000', name: 'Liabilities', type: 'LIABILITY', subType: 'HEADER' },
-  { code: '2010', name: 'Accounts Payable', type: 'LIABILITY', subType: 'PAYABLE', parentCode: '2000' },
-  { code: '2100', name: 'Short-Term Loans', type: 'LIABILITY', subType: 'LOAN', parentCode: '2000' },
-  { code: '2200', name: 'GST / Sales Tax Payable', type: 'LIABILITY', subType: 'TAX', parentCode: '2000' },
-  { code: '2300', name: 'Withholding Tax Payable', type: 'LIABILITY', subType: 'TAX', parentCode: '2000' },
-  { code: '2500', name: 'Long-Term Loans', type: 'LIABILITY', subType: 'LOAN', parentCode: '2000' },
+  {
+    code: '2010',
+    name: 'Accounts Payable',
+    type: 'LIABILITY',
+    subType: 'PAYABLE',
+    parentCode: '2000',
+  },
+  {
+    code: '2100',
+    name: 'Short-Term Loans',
+    type: 'LIABILITY',
+    subType: 'LOAN',
+    parentCode: '2000',
+  },
+  {
+    code: '2200',
+    name: 'GST / Sales Tax Payable',
+    type: 'LIABILITY',
+    subType: 'TAX',
+    parentCode: '2000',
+  },
+  {
+    code: '2300',
+    name: 'Withholding Tax Payable',
+    type: 'LIABILITY',
+    subType: 'TAX',
+    parentCode: '2000',
+  },
+  {
+    code: '2500',
+    name: 'Long-Term Loans',
+    type: 'LIABILITY',
+    subType: 'LOAN',
+    parentCode: '2000',
+  },
 
   // EQUITY (3000 series)
   { code: '3000', name: 'Equity', type: 'EQUITY', subType: 'HEADER' },
-  { code: '3010', name: "Owner's Capital", type: 'EQUITY', subType: 'CAPITAL', parentCode: '3000' },
-  { code: '3020', name: "Owner's Drawings", type: 'EQUITY', subType: 'DRAWINGS', parentCode: '3000' },
-  { code: '3100', name: 'Retained Earnings', type: 'EQUITY', subType: 'RETAINED', parentCode: '3000' },
+  {
+    code: '3010',
+    name: "Owner's Capital",
+    type: 'EQUITY',
+    subType: 'CAPITAL',
+    parentCode: '3000',
+  },
+  {
+    code: '3020',
+    name: "Owner's Drawings",
+    type: 'EQUITY',
+    subType: 'DRAWINGS',
+    parentCode: '3000',
+  },
+  {
+    code: '3100',
+    name: 'Retained Earnings',
+    type: 'EQUITY',
+    subType: 'RETAINED',
+    parentCode: '3000',
+  },
 
   // REVENUE (4000 series)
   { code: '4000', name: 'Revenue', type: 'REVENUE', subType: 'HEADER' },
-  { code: '4010', name: 'Sales Revenue', type: 'REVENUE', subType: 'SALES', parentCode: '4000' },
-  { code: '4020', name: 'Service Revenue', type: 'REVENUE', subType: 'SERVICE', parentCode: '4000' },
-  { code: '4100', name: 'Other Income', type: 'REVENUE', subType: 'OTHER', parentCode: '4000' },
-  { code: '4110', name: 'Interest Income', type: 'REVENUE', subType: 'INTEREST', parentCode: '4100' },
-  { code: '4120', name: 'Discount Received', type: 'REVENUE', subType: 'DISCOUNT', parentCode: '4100' },
+  {
+    code: '4010',
+    name: 'Sales Revenue',
+    type: 'REVENUE',
+    subType: 'SALES',
+    parentCode: '4000',
+  },
+  {
+    code: '4020',
+    name: 'Service Revenue',
+    type: 'REVENUE',
+    subType: 'SERVICE',
+    parentCode: '4000',
+  },
+  {
+    code: '4100',
+    name: 'Other Income',
+    type: 'REVENUE',
+    subType: 'OTHER',
+    parentCode: '4000',
+  },
+  {
+    code: '4110',
+    name: 'Interest Income',
+    type: 'REVENUE',
+    subType: 'INTEREST',
+    parentCode: '4100',
+  },
+  {
+    code: '4120',
+    name: 'Discount Received',
+    type: 'REVENUE',
+    subType: 'DISCOUNT',
+    parentCode: '4100',
+  },
 
   // EXPENSES (5000 series)
   { code: '5000', name: 'Expenses', type: 'EXPENSE', subType: 'HEADER' },
-  { code: '5010', name: 'Cost of Goods Sold', type: 'EXPENSE', subType: 'COGS', parentCode: '5000' },
-  { code: '5100', name: 'Salaries & Wages', type: 'EXPENSE', subType: 'PAYROLL', parentCode: '5000' },
-  { code: '5200', name: 'Rent Expense', type: 'EXPENSE', subType: 'OPERATING', parentCode: '5000' },
-  { code: '5300', name: 'Utilities', type: 'EXPENSE', subType: 'OPERATING', parentCode: '5000' },
-  { code: '5400', name: 'Office Supplies', type: 'EXPENSE', subType: 'OPERATING', parentCode: '5000' },
-  { code: '5500', name: 'Transportation', type: 'EXPENSE', subType: 'OPERATING', parentCode: '5000' },
-  { code: '5600', name: 'Depreciation Expense', type: 'EXPENSE', subType: 'DEPRECIATION', parentCode: '5000' },
-  { code: '5700', name: 'Bank Charges', type: 'EXPENSE', subType: 'FINANCIAL', parentCode: '5000' },
-  { code: '5800', name: 'Interest Expense', type: 'EXPENSE', subType: 'FINANCIAL', parentCode: '5000' },
-  { code: '5900', name: 'Miscellaneous Expense', type: 'EXPENSE', subType: 'OTHER', parentCode: '5000' },
+  {
+    code: '5010',
+    name: 'Cost of Goods Sold',
+    type: 'EXPENSE',
+    subType: 'COGS',
+    parentCode: '5000',
+  },
+  {
+    code: '5100',
+    name: 'Salaries & Wages',
+    type: 'EXPENSE',
+    subType: 'PAYROLL',
+    parentCode: '5000',
+  },
+  {
+    code: '5200',
+    name: 'Rent Expense',
+    type: 'EXPENSE',
+    subType: 'OPERATING',
+    parentCode: '5000',
+  },
+  {
+    code: '5300',
+    name: 'Utilities',
+    type: 'EXPENSE',
+    subType: 'OPERATING',
+    parentCode: '5000',
+  },
+  {
+    code: '5400',
+    name: 'Office Supplies',
+    type: 'EXPENSE',
+    subType: 'OPERATING',
+    parentCode: '5000',
+  },
+  {
+    code: '5500',
+    name: 'Transportation',
+    type: 'EXPENSE',
+    subType: 'OPERATING',
+    parentCode: '5000',
+  },
+  {
+    code: '5600',
+    name: 'Depreciation Expense',
+    type: 'EXPENSE',
+    subType: 'DEPRECIATION',
+    parentCode: '5000',
+  },
+  {
+    code: '5700',
+    name: 'Bank Charges',
+    type: 'EXPENSE',
+    subType: 'FINANCIAL',
+    parentCode: '5000',
+  },
+  {
+    code: '5800',
+    name: 'Interest Expense',
+    type: 'EXPENSE',
+    subType: 'FINANCIAL',
+    parentCode: '5000',
+  },
+  {
+    code: '5900',
+    name: 'Miscellaneous Expense',
+    type: 'EXPENSE',
+    subType: 'OTHER',
+    parentCode: '5000',
+  },
 ];
 
 @Injectable()
@@ -70,10 +262,13 @@ export class AccountingService {
   // 1. CREATE ACCOUNT
   // =========================================================
   async createAccount(createAccountDto: CreateAccountDto) {
-    const { companyId, code, name, type, subType, description, parentId } = createAccountDto;
+    const { companyId, code, name, type, subType, description, parentId } =
+      createAccountDto;
 
     // Validate company exists
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new NotFoundException('Company not found');
     }
@@ -83,7 +278,9 @@ export class AccountingService {
       where: { companyId_code: { companyId, code } },
     });
     if (existingAccount) {
-      throw new ConflictException(`Account with code "${code}" already exists for this company`);
+      throw new ConflictException(
+        `Account with code "${code}" already exists for this company`,
+      );
     }
 
     // Validate parent account if provided
@@ -97,7 +294,9 @@ export class AccountingService {
       }
 
       if (parentAccount.companyId !== companyId) {
-        throw new BadRequestException('Parent account belongs to a different company');
+        throw new BadRequestException(
+          'Parent account belongs to a different company',
+        );
       }
 
       // Child must inherit the parent's account type
@@ -127,7 +326,11 @@ export class AccountingService {
   // =========================================================
   // 2. UPDATE ACCOUNT
   // =========================================================
-  async updateAccount(id: string, companyId: string, updateAccountDto: UpdateAccountDto) {
+  async updateAccount(
+    id: string,
+    companyId: string,
+    updateAccountDto: UpdateAccountDto,
+  ) {
     const account = await this.prisma.account.findUnique({
       where: { id },
       include: { children: true, journalLines: { take: 1 } },
@@ -172,9 +375,14 @@ export class AccountingService {
       }
 
       // Check for circular references deeper in the tree
-      const isCircular = await this.checkCircularReference(id, updateAccountDto.parentId);
+      const isCircular = await this.checkCircularReference(
+        id,
+        updateAccountDto.parentId,
+      );
       if (isCircular) {
-        throw new BadRequestException('Setting this parent would create a circular reference');
+        throw new BadRequestException(
+          'Setting this parent would create a circular reference',
+        );
       }
 
       // Type consistency check
@@ -229,7 +437,9 @@ export class AccountingService {
 
     // Hard delete since no journal entries exist
     await this.prisma.account.delete({ where: { id } });
-    return { message: `Account "${account.code} - ${account.name}" has been deleted` };
+    return {
+      message: `Account "${account.code} - ${account.name}" has been deleted`,
+    };
   }
 
   // =========================================================
@@ -241,7 +451,14 @@ export class AccountingService {
       include: {
         parent: { select: { id: true, code: true, name: true } },
         children: {
-          select: { id: true, code: true, name: true, type: true, balance: true, isActive: true },
+          select: {
+            id: true,
+            code: true,
+            name: true,
+            type: true,
+            balance: true,
+            isActive: true,
+          },
           orderBy: { code: 'asc' },
         },
       },
@@ -362,15 +579,21 @@ export class AccountingService {
   // 8. SEED DEFAULT CHART OF ACCOUNTS (For new companies)
   // =========================================================
   async seedDefaultAccounts(companyId: string) {
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) {
       throw new NotFoundException('Company not found');
     }
 
     // Check if accounts already exist
-    const existingCount = await this.prisma.account.count({ where: { companyId } });
+    const existingCount = await this.prisma.account.count({
+      where: { companyId },
+    });
     if (existingCount > 0) {
-      throw new ConflictException('This company already has accounts. Seeding is only for new companies.');
+      throw new ConflictException(
+        'This company already has accounts. Seeding is only for new companies.',
+      );
     }
 
     // First pass: create all accounts without parent relationships
@@ -417,7 +640,10 @@ export class AccountingService {
    * Walks up the tree from candidateParentId checking if
    * it eventually reaches accountId — which would be circular.
    */
-  private async checkCircularReference(accountId: string, candidateParentId: string): Promise<boolean> {
+  private async checkCircularReference(
+    accountId: string,
+    candidateParentId: string,
+  ): Promise<boolean> {
     let currentId: string | null = candidateParentId;
     const visited = new Set<string>();
 
@@ -426,10 +652,11 @@ export class AccountingService {
       if (visited.has(currentId)) return false; // already visited, no cycle through our target
       visited.add(currentId);
 
-      const parent: { parentId: string | null } | null = await this.prisma.account.findUnique({
-        where: { id: currentId },
-        select: { parentId: true },
-      });
+      const parent: { parentId: string | null } | null =
+        await this.prisma.account.findUnique({
+          where: { id: currentId },
+          select: { parentId: true },
+        });
 
       currentId = parent?.parentId ?? null;
     }

@@ -48,7 +48,11 @@ export class AccountingController {
     @Query('companyId') companyId: string,
     @Body() updateAccountDto: UpdateAccountDto,
   ) {
-    return this.accountingService.updateAccount(id, companyId, updateAccountDto);
+    return this.accountingService.updateAccount(
+      id,
+      companyId,
+      updateAccountDto,
+    );
   }
 
   /**
@@ -72,10 +76,7 @@ export class AccountingController {
    */
   @Permissions('account:read')
   @Get('accounts/:id')
-  getAccount(
-    @Param('id') id: string,
-    @Query('companyId') companyId: string,
-  ) {
+  getAccount(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.accountingService.getAccount(id, companyId);
   }
 

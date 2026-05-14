@@ -1,4 +1,12 @@
-import { Controller, Get, Post, Body, Param, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Param,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { WarehouseTransfersService } from './warehouse-transfers.service';
 import { CreateWarehouseTransferDto } from './dto/create-warehouse-transfer.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -9,7 +17,10 @@ export class WarehouseTransfersController {
   constructor(private readonly transfersService: WarehouseTransfersService) {}
 
   @Post()
-  create(@Body('companyId') companyId: string, @Body() createDto: CreateWarehouseTransferDto) {
+  create(
+    @Body('companyId') companyId: string,
+    @Body() createDto: CreateWarehouseTransferDto,
+  ) {
     return this.transfersService.create(companyId, createDto);
   }
 
@@ -19,7 +30,11 @@ export class WarehouseTransfersController {
     @Query('page') page?: string,
     @Query('limit') limit?: string,
   ) {
-    return this.transfersService.findAll(companyId, page ? +page : 1, limit ? +limit : 20);
+    return this.transfersService.findAll(
+      companyId,
+      page ? +page : 1,
+      limit ? +limit : 20,
+    );
   }
 
   @Get(':id')

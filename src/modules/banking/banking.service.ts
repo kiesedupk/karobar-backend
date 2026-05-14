@@ -31,20 +31,33 @@ export class BankingService {
     const { companyId, glAccountId, name, openingBalance } = dto;
 
     // Validate company
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) throw new NotFoundException('Company not found');
 
     // Validate GL account belongs to company and is an asset type
-    const glAccount = await this.prisma.account.findUnique({ where: { id: glAccountId } });
+    const glAccount = await this.prisma.account.findUnique({
+      where: { id: glAccountId },
+    });
     if (!glAccount) throw new NotFoundException('GL Account not found');
-    if (glAccount.companyId !== companyId) throw new BadRequestException('GL Account does not belong to this company');
-    if (glAccount.type !== 'ASSET') throw new BadRequestException('GL Account must be an ASSET type (BANK or CASH account)');
+    if (glAccount.companyId !== companyId)
+      throw new BadRequestException(
+        'GL Account does not belong to this company',
+      );
+    if (glAccount.type !== 'ASSET')
+      throw new BadRequestException(
+        'GL Account must be an ASSET type (BANK or CASH account)',
+      );
 
     // Prevent duplicate links to same GL account
     const existing = await this.prisma.bankAccount.findFirst({
       where: { companyId, glAccountId },
     });
-    if (existing) throw new ConflictException(`A bank account is already linked to GL Account "${glAccount.name}"`);
+    if (existing)
+      throw new ConflictException(
+        `A bank account is already linked to GL Account "${glAccount.name}"`,
+      );
 
     const opening = new Decimal(openingBalance || 0);
 
@@ -177,7 +190,8 @@ export class BankingService {
         totalBalance: totalBalance.toFixed(2),
         bankAccounts: accounts.filter((a) => a.accountType === 'BANK').length,
         cashAccounts: accounts.filter((a) => a.accountType === 'CASH').length,
-        mobileWallets: accounts.filter((a) => a.accountType === 'MOBILE_WALLET').length,
+        mobileWallets: accounts.filter((a) => a.accountType === 'MOBILE_WALLET')
+          .length,
       },
     };
   }
@@ -194,7 +208,8 @@ export class BankingService {
     });
 
     if (!account) throw new NotFoundException('Bank account not found');
-    if (account.companyId !== companyId) throw new BadRequestException('Account does not belong to this company');
+    if (account.companyId !== companyId)
+      throw new BadRequestException('Account does not belong to this company');
 
     return {
       ...account,
@@ -203,10 +218,15 @@ export class BankingService {
     };
   }
 
-  async updateBankAccount(id: string, companyId: string, dto: UpdateBankAccountDto) {
+  async updateBankAccount(
+    id: string,
+    companyId: string,
+    dto: UpdateBankAccountDto,
+  ) {
     const account = await this.prisma.bankAccount.findUnique({ where: { id } });
     if (!account) throw new NotFoundException('Bank account not found');
-    if (account.companyId !== companyId) throw new BadRequestException('Account does not belong to this company');
+    if (account.companyId !== companyId)
+      throw new BadRequestException('Account does not belong to this company');
 
     return this.prisma.bankAccount.update({
       where: { id },
@@ -227,12 +247,21 @@ export class BankingService {
   // ================================================================
 
   async createTransfer(dto: CreateTransferDto) {
-    const { companyId, fromAccountId, toAccountId, amount, description, reference, transferDate } = dto;
+    const {
+      companyId,
+      fromAccountId,
+      toAccountId,
+      amount,
+      description,
+      reference,
+      transferDate,
+    } = dto;
 
     // Check if period is closed
     await this.periodsService.checkLock(companyId, transferDate || new Date());
 
-    if (fromAccountId === toAccountId) throw new BadRequestException('Cannot transfer to the same account');
+    if (fromAccountId === toAccountId)
+      throw new BadRequestException('Cannot transfer to the same account');
 
     const [fromAccount, toAccount] = await Promise.all([
       this.prisma.bankAccount.findUnique({ where: { id: fromAccountId } }),
@@ -240,11 +269,20 @@ export class BankingService {
     ]);
 
     if (!fromAccount) throw new NotFoundException('Source account not found');
-    if (!toAccount) throw new NotFoundException('Destination account not found');
-    if (fromAccount.companyId !== companyId) throw new BadRequestException('Source account does not belong to this company');
-    if (toAccount.companyId !== companyId) throw new BadRequestException('Destination account does not belong to this company');
-    if (!fromAccount.isActive) throw new BadRequestException('Source account is inactive');
-    if (!toAccount.isActive) throw new BadRequestException('Destination account is inactive');
+    if (!toAccount)
+      throw new NotFoundException('Destination account not found');
+    if (fromAccount.companyId !== companyId)
+      throw new BadRequestException(
+        'Source account does not belong to this company',
+      );
+    if (toAccount.companyId !== companyId)
+      throw new BadRequestException(
+        'Destination account does not belong to this company',
+      );
+    if (!fromAccount.isActive)
+      throw new BadRequestException('Source account is inactive');
+    if (!toAccount.isActive)
+      throw new BadRequestException('Destination account is inactive');
 
     const transferAmount = new Decimal(amount);
     const fromBalance = new Decimal(fromAccount.currentBalance);
@@ -257,7 +295,8 @@ export class BankingService {
 
     const txDate = transferDate ? new Date(transferDate) : new Date();
     const ref = reference || `TRF-${Date.now()}`;
-    const desc = description || `Transfer from ${fromAccount.name} to ${toAccount.name}`;
+    const desc =
+      description || `Transfer from ${fromAccount.name} to ${toAccount.name}`;
 
     return this.prisma.$transaction(async (tx) => {
       // Get GL accounts for both
@@ -309,7 +348,9 @@ export class BankingService {
 
       // Update bank account balances
       const newFromBalance = fromBalance.minus(transferAmount);
-      const newToBalance = new Decimal(toAccount.currentBalance).plus(transferAmount);
+      const newToBalance = new Decimal(toAccount.currentBalance).plus(
+        transferAmount,
+      );
 
       await tx.bankAccount.update({
         where: { id: fromAccountId },
@@ -388,14 +429,20 @@ export class BankingService {
     });
   }
 
-  async listTransfers(companyId: string, options: { page?: number; limit?: number; accountId?: string }) {
+  async listTransfers(
+    companyId: string,
+    options: { page?: number; limit?: number; accountId?: string },
+  ) {
     const page = options.page || 1;
     const limit = Math.min(options.limit || 20, 100);
     const skip = (page - 1) * limit;
 
     const where: any = { companyId };
     if (options.accountId) {
-      where.OR = [{ fromAccountId: options.accountId }, { toAccountId: options.accountId }];
+      where.OR = [
+        { fromAccountId: options.accountId },
+        { toAccountId: options.accountId },
+      ];
     }
 
     const [transfers, total] = await Promise.all([
@@ -413,7 +460,10 @@ export class BankingService {
     ]);
 
     return {
-      data: transfers.map((t) => ({ ...t, amount: new Decimal(t.amount).toFixed(2) })),
+      data: transfers.map((t) => ({
+        ...t,
+        amount: new Decimal(t.amount).toFixed(2),
+      })),
       pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
     };
   }
@@ -427,9 +477,12 @@ export class BankingService {
     companyId: string,
     options: { page?: number; limit?: number; type?: string },
   ) {
-    const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    const account = await this.prisma.bankAccount.findUnique({
+      where: { id: bankAccountId },
+    });
     if (!account) throw new NotFoundException('Bank account not found');
-    if (account.companyId !== companyId) throw new BadRequestException('Account does not belong to this company');
+    if (account.companyId !== companyId)
+      throw new BadRequestException('Account does not belong to this company');
 
     const page = options.page || 1;
     const limit = Math.min(options.limit || 30, 100);
@@ -477,16 +530,21 @@ export class BankingService {
     // Check if period is closed
     await this.periodsService.checkLock(companyId, new Date());
 
-    const account = await this.prisma.bankAccount.findUnique({ where: { id: bankAccountId } });
+    const account = await this.prisma.bankAccount.findUnique({
+      where: { id: bankAccountId },
+    });
     if (!account) throw new NotFoundException('Bank account not found');
-    if (account.companyId !== companyId) throw new BadRequestException('Account does not belong to this company');
+    if (account.companyId !== companyId)
+      throw new BadRequestException('Account does not belong to this company');
 
     const adjustAmount = new Decimal(amount);
     const currentBalance = new Decimal(account.currentBalance);
     const newBalance = currentBalance.plus(adjustAmount);
 
     return this.prisma.$transaction(async (tx) => {
-      const glAccount = await tx.account.findUnique({ where: { id: account.glAccountId } });
+      const glAccount = await tx.account.findUnique({
+        where: { id: account.glAccountId },
+      });
 
       // Post adjustment journal entry
       const isPositive = adjustAmount.greaterThan(0);
@@ -501,12 +559,32 @@ export class BankingService {
       if (counterAccount) {
         const journalLines: any[] = isPositive
           ? [
-              { accountId: account.glAccountId, debit: absAmount, credit: new Decimal(0), description },
-              { accountId: counterAccount.id, debit: new Decimal(0), credit: absAmount, description: `Adjustment — ${account.name}` },
+              {
+                accountId: account.glAccountId,
+                debit: absAmount,
+                credit: new Decimal(0),
+                description,
+              },
+              {
+                accountId: counterAccount.id,
+                debit: new Decimal(0),
+                credit: absAmount,
+                description: `Adjustment — ${account.name}`,
+              },
             ]
           : [
-              { accountId: counterAccount.id, debit: absAmount, credit: new Decimal(0), description: `Adjustment — ${account.name}` },
-              { accountId: account.glAccountId, debit: new Decimal(0), credit: absAmount, description },
+              {
+                accountId: counterAccount.id,
+                debit: absAmount,
+                credit: new Decimal(0),
+                description: `Adjustment — ${account.name}`,
+              },
+              {
+                accountId: account.glAccountId,
+                debit: new Decimal(0),
+                credit: absAmount,
+                description,
+              },
             ];
 
         await tx.journalEntry.create({
@@ -524,7 +602,9 @@ export class BankingService {
         if (glAccount) {
           await tx.account.update({
             where: { id: account.glAccountId },
-            data: { balance: new Decimal(glAccount.balance).plus(adjustAmount) },
+            data: {
+              balance: new Decimal(glAccount.balance).plus(adjustAmount),
+            },
           });
         }
       }
@@ -568,7 +648,11 @@ export class BankingService {
       orderBy: [{ accountType: 'asc' }, { currentBalance: 'desc' }],
     });
 
-    const grouped: Record<string, any[]> = { BANK: [], CASH: [], MOBILE_WALLET: [] };
+    const grouped: Record<string, any[]> = {
+      BANK: [],
+      CASH: [],
+      MOBILE_WALLET: [],
+    };
     let grandTotal = new Decimal(0);
 
     for (const acc of accounts) {
@@ -590,15 +674,24 @@ export class BankingService {
       byType: {
         bank: {
           accounts: grouped.BANK,
-          total: grouped.BANK.reduce((s, a) => s.plus(new Decimal(a.currentBalance)), new Decimal(0)).toFixed(2),
+          total: grouped.BANK.reduce(
+            (s, a) => s.plus(new Decimal(a.currentBalance)),
+            new Decimal(0),
+          ).toFixed(2),
         },
         cash: {
           accounts: grouped.CASH,
-          total: grouped.CASH.reduce((s, a) => s.plus(new Decimal(a.currentBalance)), new Decimal(0)).toFixed(2),
+          total: grouped.CASH.reduce(
+            (s, a) => s.plus(new Decimal(a.currentBalance)),
+            new Decimal(0),
+          ).toFixed(2),
         },
         mobileWallet: {
           accounts: grouped.MOBILE_WALLET,
-          total: grouped.MOBILE_WALLET.reduce((s, a) => s.plus(new Decimal(a.currentBalance)), new Decimal(0)).toFixed(2),
+          total: grouped.MOBILE_WALLET.reduce(
+            (s, a) => s.plus(new Decimal(a.currentBalance)),
+            new Decimal(0),
+          ).toFixed(2),
         },
       },
     };

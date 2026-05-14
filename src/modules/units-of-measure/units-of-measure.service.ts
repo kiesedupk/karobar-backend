@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
@@ -12,7 +16,9 @@ export class UnitsOfMeasureService {
       where: { companyId, OR: [{ name: dto.name }, { symbol: dto.symbol }] },
     });
     if (existing) {
-      throw new ConflictException('Unit with this name or symbol already exists');
+      throw new ConflictException(
+        'Unit with this name or symbol already exists',
+      );
     }
     return this.prisma.unitOfMeasure.create({
       data: { ...dto, companyId },

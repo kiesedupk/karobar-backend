@@ -35,7 +35,8 @@ export class CompaniesService {
           companyId: company.id,
           name: 'ACCOUNTANT',
           description: 'Accountant with financial entry and reports access',
-          permissions: 'accounts:*,journal:*,reports:*,customers:*,vendors:*,invoices:*',
+          permissions:
+            'accounts:*,journal:*,reports:*,customers:*,vendors:*,invoices:*',
         },
       });
 
@@ -44,7 +45,8 @@ export class CompaniesService {
           companyId: company.id,
           name: 'MANAGER',
           description: 'Manager with dashboard and financial view privileges',
-          permissions: 'dashboard:*,reports:*,customers:read,vendors:read,invoices:read',
+          permissions:
+            'dashboard:*,reports:*,customers:read,vendors:read,invoices:read',
         },
       });
 
@@ -52,8 +54,10 @@ export class CompaniesService {
         data: {
           companyId: company.id,
           name: 'CASHIER',
-          description: 'Cashier with sales invoicing and customer management access',
-          permissions: 'invoices:create,invoices:read,customers:create,customers:read',
+          description:
+            'Cashier with sales invoicing and customer management access',
+          permissions:
+            'invoices:create,invoices:read,customers:create,customers:read',
         },
       });
 

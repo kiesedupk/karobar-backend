@@ -27,7 +27,9 @@ export class CreateAccountDto {
 
   @IsNotEmpty()
   @IsString()
-  @IsIn(ACCOUNT_TYPES, { message: 'type must be one of: ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE' })
+  @IsIn(ACCOUNT_TYPES, {
+    message: 'type must be one of: ASSET, LIABILITY, EQUITY, REVENUE, EXPENSE',
+  })
   type: string;
 
   @IsOptional()

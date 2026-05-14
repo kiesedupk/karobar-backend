@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { UnitsOfMeasureService } from './units-of-measure.service';
 import { CreateUnitDto } from './dto/create-unit.dto';
 import { UpdateUnitDto } from './dto/update-unit.dto';
@@ -10,7 +20,10 @@ export class UnitsOfMeasureController {
   constructor(private readonly unitsService: UnitsOfMeasureService) {}
 
   @Post()
-  create(@Body('companyId') companyId: string, @Body() createDto: CreateUnitDto) {
+  create(
+    @Body('companyId') companyId: string,
+    @Body() createDto: CreateUnitDto,
+  ) {
     return this.unitsService.create(companyId, createDto);
   }
 
@@ -25,7 +38,11 @@ export class UnitsOfMeasureController {
   }
 
   @Patch(':id')
-  update(@Query('companyId') companyId: string, @Param('id') id: string, @Body() updateDto: UpdateUnitDto) {
+  update(
+    @Query('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateUnitDto,
+  ) {
     return this.unitsService.update(companyId, id, updateDto);
   }
 

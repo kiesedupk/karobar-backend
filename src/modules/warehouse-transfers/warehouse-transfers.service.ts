@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+} from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { CreateWarehouseTransferDto } from './dto/create-warehouse-transfer.dto';
 
@@ -8,7 +12,9 @@ const prisma = new PrismaClient();
 export class WarehouseTransfersService {
   async create(companyId: string, dto: CreateWarehouseTransferDto) {
     if (dto.fromWarehouseId === dto.toWarehouseId) {
-      throw new BadRequestException('Source and destination warehouses cannot be the same');
+      throw new BadRequestException(
+        'Source and destination warehouses cannot be the same',
+      );
     }
 
     return prisma.warehouseTransfer.create({
@@ -16,12 +22,14 @@ export class WarehouseTransfersService {
         companyId,
         fromWarehouseId: dto.fromWarehouseId,
         toWarehouseId: dto.toWarehouseId,
-        transferDate: dto.transferDate ? new Date(dto.transferDate) : new Date(),
+        transferDate: dto.transferDate
+          ? new Date(dto.transferDate)
+          : new Date(),
         reference: dto.reference,
         notes: dto.notes,
         status: 'DRAFT',
         items: {
-          create: dto.items.map(item => ({
+          create: dto.items.map((item) => ({
             productId: item.productId,
             quantity: item.quantity,
           })),
@@ -91,13 +99,20 @@ export class WarehouseTransfersService {
           },
         });
 
-        if (!sourceStock || Number(sourceStock.quantity) < Number(item.quantity)) {
-          throw new BadRequestException(`Insufficient stock for product ${item.product.name} in source warehouse`);
+        if (
+          !sourceStock ||
+          Number(sourceStock.quantity) < Number(item.quantity)
+        ) {
+          throw new BadRequestException(
+            `Insufficient stock for product ${item.product.name} in source warehouse`,
+          );
         }
 
         await tx.warehouseStock.update({
           where: { id: sourceStock.id },
-          data: { quantity: Number(sourceStock.quantity) - Number(item.quantity) },
+          data: {
+            quantity: Number(sourceStock.quantity) - Number(item.quantity),
+          },
         });
 
         // 2. Add to destination
@@ -113,7 +128,9 @@ export class WarehouseTransfersService {
         if (destStock) {
           await tx.warehouseStock.update({
             where: { id: destStock.id },
-            data: { quantity: Number(destStock.quantity) + Number(item.quantity) },
+            data: {
+              quantity: Number(destStock.quantity) + Number(item.quantity),
+            },
           });
         } else {
           await tx.warehouseStock.create({
@@ -139,7 +156,9 @@ export class WarehouseTransfersService {
     const transfer = await this.findOne(companyId, id);
 
     if (transfer.status !== 'DRAFT') {
-      throw new BadRequestException(`Cannot cancel a transfer in ${transfer.status} state`);
+      throw new BadRequestException(
+        `Cannot cancel a transfer in ${transfer.status} state`,
+      );
     }
 
     return prisma.warehouseTransfer.update({

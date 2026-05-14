@@ -1,4 +1,9 @@
-import { Injectable, NotFoundException, BadRequestException, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  NotFoundException,
+  BadRequestException,
+  ConflictException,
+} from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { AuditService } from '../../common/audit/audit.service';
 import { CreatePurchaseBillDto } from './dto/create-purchase-bill.dto';
@@ -12,21 +17,41 @@ export class PurchaseBillsService {
   ) {}
 
   async create(dto: CreatePurchaseBillDto) {
-    const { companyId, vendorId, warehouseId, billNumber, paymentAccountId, items } = dto;
+    const {
+      companyId,
+      vendorId,
+      warehouseId,
+      billNumber,
+      paymentAccountId,
+      items,
+    } = dto;
 
     // 1. Validate company
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) throw new NotFoundException('Company not found');
 
     // 2. Validate warehouse
-    const warehouse = await this.prisma.warehouse.findUnique({ where: { id: warehouseId } });
-    if (!warehouse || warehouse.companyId !== companyId) throw new BadRequestException('Invalid warehouse');
+    const warehouse = await this.prisma.warehouse.findUnique({
+      where: { id: warehouseId },
+    });
+    if (!warehouse || warehouse.companyId !== companyId)
+      throw new BadRequestException('Invalid warehouse');
 
     // 3. Validate payment account (Cash/Bank - ASSET type)
-    const paymentAccount = await this.prisma.account.findUnique({ where: { id: paymentAccountId } });
-    if (!paymentAccount || paymentAccount.companyId !== companyId) throw new BadRequestException('Invalid payment account');
-    if (paymentAccount.type !== 'ASSET' && paymentAccount.type !== 'LIABILITY') {
-      throw new BadRequestException('Payment account must be ASSET or LIABILITY type');
+    const paymentAccount = await this.prisma.account.findUnique({
+      where: { id: paymentAccountId },
+    });
+    if (!paymentAccount || paymentAccount.companyId !== companyId)
+      throw new BadRequestException('Invalid payment account');
+    if (
+      paymentAccount.type !== 'ASSET' &&
+      paymentAccount.type !== 'LIABILITY'
+    ) {
+      throw new BadRequestException(
+        'Payment account must be ASSET or LIABILITY type',
+      );
     }
 
     // 4. Validate unique bill number
@@ -37,8 +62,11 @@ export class PurchaseBillsService {
 
     // 5. Validate vendor
     if (vendorId) {
-      const vendor = await this.prisma.vendor.findUnique({ where: { id: vendorId } });
-      if (!vendor || vendor.companyId !== companyId) throw new BadRequestException('Invalid vendor');
+      const vendor = await this.prisma.vendor.findUnique({
+        where: { id: vendorId },
+      });
+      if (!vendor || vendor.companyId !== companyId)
+        throw new BadRequestException('Invalid vendor');
     }
 
     // 6. Validate products and calculate totals
@@ -50,7 +78,8 @@ export class PurchaseBillsService {
       const product = await this.prisma.product.findFirst({
         where: { id: item.productId, companyId },
       });
-      if (!product) throw new BadRequestException(`Product not found: ${item.productId}`);
+      if (!product)
+        throw new BadRequestException(`Product not found: ${item.productId}`);
 
       const lineTotal = new Decimal(item.unitCost).mul(item.quantity);
       const taxRate = new Decimal(item.taxRate || 0);
@@ -136,7 +165,9 @@ export class PurchaseBillsService {
 
       // B. Update GL account balances
       for (const line of journalEntry.lines) {
-        const account = await tx.account.findUnique({ where: { id: line.accountId } });
+        const account = await tx.account.findUnique({
+          where: { id: line.accountId },
+        });
         if (account) {
           let delta: Decimal;
           if (account.type === 'ASSET' || account.type === 'EXPENSE') {
@@ -274,7 +305,11 @@ export class PurchaseBillsService {
         orderBy: { createdAt: 'desc' },
         include: {
           vendor: { select: { id: true, name: true } },
-          items: { include: { product: { select: { id: true, name: true, sku: true } } } },
+          items: {
+            include: {
+              product: { select: { id: true, name: true, sku: true } },
+            },
+          },
         },
       }),
       this.prisma.purchaseBill.count({ where: { companyId } }),
@@ -290,7 +325,8 @@ export class PurchaseBillsService {
         items: { include: { product: true } },
       },
     });
-    if (!bill || bill.companyId !== companyId) throw new NotFoundException('Purchase bill not found');
+    if (!bill || bill.companyId !== companyId)
+      throw new NotFoundException('Purchase bill not found');
     return bill;
   }
 }

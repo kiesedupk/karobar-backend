@@ -51,7 +51,10 @@ export class CreateRecurringInvoiceDto {
 
   @IsNotEmpty()
   @IsString()
-  @IsIn(FREQUENCIES, { message: 'frequency must be one of: WEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM' })
+  @IsIn(FREQUENCIES, {
+    message:
+      'frequency must be one of: WEEKLY, MONTHLY, QUARTERLY, YEARLY, CUSTOM',
+  })
   frequency: string;
 
   @ValidateIf((o) => o.frequency === 'CUSTOM')

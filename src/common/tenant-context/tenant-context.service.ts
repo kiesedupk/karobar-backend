@@ -3,7 +3,9 @@ import { AsyncLocalStorage } from 'async_hooks';
 
 @Injectable()
 export class TenantContextService {
-  private static readonly asyncLocalStorage = new AsyncLocalStorage<Map<string, string>>();
+  private static readonly asyncLocalStorage = new AsyncLocalStorage<
+    Map<string, string>
+  >();
 
   runWithTenant(companyId: string, callback: () => any) {
     const store = new Map<string, string>();

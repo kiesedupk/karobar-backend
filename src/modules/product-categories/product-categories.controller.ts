@@ -1,4 +1,14 @@
-import { Controller, Get, Post, Body, Patch, Param, Delete, UseGuards, Query } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Patch,
+  Param,
+  Delete,
+  UseGuards,
+  Query,
+} from '@nestjs/common';
 import { ProductCategoriesService } from './product-categories.service';
 import { CreateCategoryDto } from './dto/create-category.dto';
 import { UpdateCategoryDto } from './dto/update-category.dto';
@@ -10,7 +20,10 @@ export class ProductCategoriesController {
   constructor(private readonly categoriesService: ProductCategoriesService) {}
 
   @Post()
-  create(@Body('companyId') companyId: string, @Body() createDto: CreateCategoryDto) {
+  create(
+    @Body('companyId') companyId: string,
+    @Body() createDto: CreateCategoryDto,
+  ) {
     return this.categoriesService.create(companyId, createDto);
   }
 
@@ -25,7 +38,11 @@ export class ProductCategoriesController {
   }
 
   @Patch(':id')
-  update(@Query('companyId') companyId: string, @Param('id') id: string, @Body() updateDto: UpdateCategoryDto) {
+  update(
+    @Query('companyId') companyId: string,
+    @Param('id') id: string,
+    @Body() updateDto: UpdateCategoryDto,
+  ) {
     return this.categoriesService.update(companyId, id, updateDto);
   }
 

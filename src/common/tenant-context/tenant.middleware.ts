@@ -8,7 +8,9 @@ export class TenantMiddleware implements NestMiddleware {
 
   use(req: any, res: Response, next: NextFunction) {
     // Try to extract companyId from headers, query, or user object (attached by JWT guard)
-    let companyId = req.headers['x-company-id'] as string || req.query.companyId as string;
+    let companyId =
+      (req.headers['x-company-id'] as string) ||
+      (req.query.companyId as string);
 
     // If user object is already populated by auth guard (for routes where guard runs before middleware)
     if (!companyId && req.user && req.user.companyId) {

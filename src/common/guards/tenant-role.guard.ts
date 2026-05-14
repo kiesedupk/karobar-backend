@@ -1,4 +1,9 @@
-import { Injectable, CanActivate, ExecutionContext, ForbiddenException } from '@nestjs/common';
+import {
+  Injectable,
+  CanActivate,
+  ExecutionContext,
+  ForbiddenException,
+} from '@nestjs/common';
 import { Reflector } from '@nestjs/core';
 import { PrismaService } from '../../prisma/prisma.service';
 import { ROLES_KEY } from '../decorators/roles.decorator';
@@ -12,15 +17,15 @@ export class TenantRoleGuard implements CanActivate {
   ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
-    const requiredRoles = this.reflector.getAllAndOverride<string[]>(ROLES_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredRoles = this.reflector.getAllAndOverride<string[]>(
+      ROLES_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
-    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(PERMISSIONS_KEY, [
-      context.getHandler(),
-      context.getClass(),
-    ]);
+    const requiredPermissions = this.reflector.getAllAndOverride<string[]>(
+      PERMISSIONS_KEY,
+      [context.getHandler(), context.getClass()],
+    );
 
     // If no roles or permissions are required, we just pass
     if (!requiredRoles && !requiredPermissions) {
@@ -35,10 +40,10 @@ export class TenantRoleGuard implements CanActivate {
     }
 
     // Try to extract companyId from params, query, body or headers
-    const companyId = 
-      request.params.companyId || 
-      request.query.companyId || 
-      request.body.companyId || 
+    const companyId =
+      request.params.companyId ||
+      request.query.companyId ||
+      request.body.companyId ||
       request.headers['x-company-id'];
 
     if (!companyId) {
@@ -63,7 +68,9 @@ export class TenantRoleGuard implements CanActivate {
     }
 
     const userRole = userCompany.role.name;
-    const userPermissions = userCompany.role.permissions ? userCompany.role.permissions.split(',') : [];
+    const userPermissions = userCompany.role.permissions
+      ? userCompany.role.permissions.split(',')
+      : [];
 
     // ADMIN always has full access
     if (userRole === 'ADMIN' || userPermissions.includes('*')) {
@@ -74,24 +81,28 @@ export class TenantRoleGuard implements CanActivate {
     if (requiredRoles && requiredRoles.length > 0) {
       const hasRole = requiredRoles.includes(userRole);
       if (!hasRole && !requiredPermissions) {
-        throw new ForbiddenException(`Requires one of the following roles: ${requiredRoles.join(', ')}`);
+        throw new ForbiddenException(
+          `Requires one of the following roles: ${requiredRoles.join(', ')}`,
+        );
       }
       if (hasRole) return true;
     }
 
     // 2. Check Permissions (Granular RBAC)
     if (requiredPermissions && requiredPermissions.length > 0) {
-      const hasPermission = requiredPermissions.some(rp => {
+      const hasPermission = requiredPermissions.some((rp) => {
         // Exact match
         if (userPermissions.includes(rp)) return true;
-        
+
         // Wildcard match (e.g. user has 'invoice:*' and requires 'invoice:read')
         const [module, action] = rp.split(':');
         return userPermissions.includes(`${module}:*`);
       });
 
       if (!hasPermission) {
-        throw new ForbiddenException(`Insufficient permissions. Requires: ${requiredPermissions.join(' or ')}`);
+        throw new ForbiddenException(
+          `Insufficient permissions. Requires: ${requiredPermissions.join(' or ')}`,
+        );
       }
     }
 

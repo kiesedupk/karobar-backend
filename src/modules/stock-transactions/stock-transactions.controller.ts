@@ -1,6 +1,10 @@
 import { Controller, Get, Post, Body, UseGuards, Query } from '@nestjs/common';
 import { StockTransactionsService } from './stock-transactions.service';
-import { StockInDto, StockOutDto, StockAdjustmentDto } from './dto/stock-transaction.dto';
+import {
+  StockInDto,
+  StockOutDto,
+  StockAdjustmentDto,
+} from './dto/stock-transaction.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 
 @UseGuards(JwtAuthGuard)
@@ -19,7 +23,10 @@ export class StockTransactionsController {
   }
 
   @Post('adjust')
-  adjust(@Body('companyId') companyId: string, @Body() dto: StockAdjustmentDto) {
+  adjust(
+    @Body('companyId') companyId: string,
+    @Body() dto: StockAdjustmentDto,
+  ) {
     return this.stockService.adjust(companyId, dto);
   }
 

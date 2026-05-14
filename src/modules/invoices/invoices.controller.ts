@@ -14,7 +14,10 @@ import {
 import { InvoicesService } from './invoices.service';
 import { CreateInvoiceDto } from './dto/create-invoice.dto';
 import { RecordPaymentDto } from './dto/record-payment.dto';
-import { CreateRecurringInvoiceDto, UpdateRecurringInvoiceDto } from './dto/create-recurring.dto';
+import {
+  CreateRecurringInvoiceDto,
+  UpdateRecurringInvoiceDto,
+} from './dto/create-recurring.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { TenantRoleGuard } from '../../common/guards/tenant-role.guard';
 import { Permissions } from '../../common/decorators/permissions.decorator';
@@ -43,7 +46,12 @@ export class InvoicesController {
     @Query('status') status?: string,
     @Query('customerId') customerId?: string,
   ) {
-    return this.invoicesService.listInvoices(companyId, { page, limit, status, customerId });
+    return this.invoicesService.listInvoices(companyId, {
+      page,
+      limit,
+      status,
+      customerId,
+    });
   }
 
   @Permissions('invoice:read')
@@ -54,7 +62,10 @@ export class InvoicesController {
 
   @Permissions('invoice:create')
   @Post(':id/send')
-  sendInvoiceByEmail(@Param('id') id: string, @Query('companyId') companyId: string) {
+  sendInvoiceByEmail(
+    @Param('id') id: string,
+    @Query('companyId') companyId: string,
+  ) {
     return this.invoicesService.sendInvoiceByEmail(id, companyId);
   }
 
@@ -72,7 +83,8 @@ export class InvoicesController {
   sendInvoice(
     @Param('id') id: string,
     @Query('companyId') companyId: string,
-    @Body() body: {
+    @Body()
+    body: {
       receivableAccountId?: string;
       revenueAccountId?: string;
       taxAccountId?: string;

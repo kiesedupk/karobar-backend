@@ -29,7 +29,9 @@ export class RecordPaymentDto {
 
   @IsOptional()
   @IsString()
-  @IsIn(PAYMENT_METHODS, { message: 'method must be one of: CASH, BANK, CHEQUE, ONLINE' })
+  @IsIn(PAYMENT_METHODS, {
+    message: 'method must be one of: CASH, BANK, CHEQUE, ONLINE',
+  })
   method?: string;
 
   @IsOptional()

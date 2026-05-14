@@ -1,7 +1,4 @@
-import {
-  Injectable,
-  NotFoundException,
-} from '@nestjs/common';
+import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
 import { Decimal } from '@prisma/client/runtime/library';
 
@@ -85,7 +82,10 @@ export class ReportsService {
 
     // 2. Compute final balances with proper normal-balance rules
     for (const account of accounts) {
-      const agg = aggMap.get(account.id) || { debit: new Decimal(0), credit: new Decimal(0) };
+      const agg = aggMap.get(account.id) || {
+        debit: new Decimal(0),
+        credit: new Decimal(0),
+      };
 
       const totalDebits = agg.debit;
       const totalCredits = agg.credit;
@@ -171,7 +171,10 @@ export class ReportsService {
         totalDebitBalances: totalDebitBalances.toFixed(2),
         totalCreditBalances: totalCreditBalances.toFixed(2),
         isBalanced: totalDebitBalances.equals(totalCreditBalances),
-        difference: totalDebitBalances.minus(totalCreditBalances).abs().toFixed(2),
+        difference: totalDebitBalances
+          .minus(totalCreditBalances)
+          .abs()
+          .toFixed(2),
       },
     };
   }
@@ -344,9 +347,7 @@ export class ReportsService {
       }));
 
     const longTermLiabilities = balances
-      .filter(
-        (b) => b.accountType === 'LIABILITY' && b.subType === 'LOAN',
-      )
+      .filter((b) => b.accountType === 'LIABILITY' && b.subType === 'LOAN')
       .map((b) => ({
         accountCode: b.accountCode,
         accountName: b.accountName,
@@ -367,7 +368,9 @@ export class ReportsService {
       .filter((b) => b.accountType === 'LIABILITY' && b.subType === 'LOAN')
       .reduce((sum, b) => sum.plus(b.balance), new Decimal(0));
 
-    const totalLiabilities = totalCurrentLiabilities.plus(totalLongTermLiabilities);
+    const totalLiabilities = totalCurrentLiabilities.plus(
+      totalLongTermLiabilities,
+    );
 
     // --- EQUITY ---
     const equityAccounts = balances
@@ -393,7 +396,9 @@ export class ReportsService {
     const netIncome = revenueTotal.minus(expenseTotal);
 
     const totalEquityWithNetIncome = totalEquity.plus(netIncome);
-    const totalLiabilitiesAndEquity = totalLiabilities.plus(totalEquityWithNetIncome);
+    const totalLiabilitiesAndEquity = totalLiabilities.plus(
+      totalEquityWithNetIncome,
+    );
 
     return {
       reportName: 'Balance Sheet',
@@ -438,7 +443,10 @@ export class ReportsService {
         assets: totalAssets.toFixed(2),
         liabilitiesAndEquity: totalLiabilitiesAndEquity.toFixed(2),
         isBalanced: totalAssets.equals(totalLiabilitiesAndEquity),
-        difference: totalAssets.minus(totalLiabilitiesAndEquity).abs().toFixed(2),
+        difference: totalAssets
+          .minus(totalLiabilitiesAndEquity)
+          .abs()
+          .toFixed(2),
       },
     };
   }
@@ -453,7 +461,8 @@ export class ReportsService {
     const dateWhere: any = {};
     if (dateFilter?.startDate || dateFilter?.endDate) {
       dateWhere.date = {};
-      if (dateFilter.startDate) dateWhere.date.gte = new Date(dateFilter.startDate);
+      if (dateFilter.startDate)
+        dateWhere.date.gte = new Date(dateFilter.startDate);
       if (dateFilter.endDate) dateWhere.date.lte = new Date(dateFilter.endDate);
     }
 
@@ -709,8 +718,10 @@ export class ReportsService {
 
     if (dateFilter?.startDate || dateFilter?.endDate) {
       where.journalEntry.date = {};
-      if (dateFilter.startDate) where.journalEntry.date.gte = new Date(dateFilter.startDate);
-      if (dateFilter.endDate) where.journalEntry.date.lte = new Date(dateFilter.endDate);
+      if (dateFilter.startDate)
+        where.journalEntry.date.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate)
+        where.journalEntry.date.lte = new Date(dateFilter.endDate);
     }
 
     const lines = await this.prisma.journalLine.findMany({
@@ -784,7 +795,9 @@ export class ReportsService {
   // PRIVATE HELPERS
   // ================================================================
   private async validateCompany(companyId: string) {
-    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    const company = await this.prisma.company.findUnique({
+      where: { id: companyId },
+    });
     if (!company) throw new NotFoundException('Company not found');
     return company;
   }

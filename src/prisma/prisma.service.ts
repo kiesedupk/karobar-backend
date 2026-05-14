@@ -3,7 +3,10 @@ import { PrismaClient } from '@prisma/client';
 import { TenantContextService } from '../common/tenant-context/tenant-context.service';
 
 @Injectable()
-export class PrismaService extends PrismaClient implements OnModuleInit, OnModuleDestroy {
+export class PrismaService
+  extends PrismaClient
+  implements OnModuleInit, OnModuleDestroy
+{
   private readonly _prisma: PrismaClient;
 
   constructor(private readonly tenantContextService: TenantContextService) {
@@ -18,7 +21,7 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
           return (target as any)[prop];
         }
         // Redirect model operations (like prisma.account) to our extended multi-tenant client
-        return (target.client as any)[prop];
+        return target.client[prop];
       },
     });
   }
@@ -50,13 +53,26 @@ export class PrismaService extends PrismaClient implements OnModuleInit, OnModul
               const anyArgs = args as any;
 
               // 1. Automatically filter reads by active companyId
-              if (['findMany', 'findFirst', 'findUnique', 'count', 'aggregate', 'groupBy'].includes(operation)) {
+              if (
+                [
+                  'findMany',
+                  'findFirst',
+                  'findUnique',
+                  'count',
+                  'aggregate',
+                  'groupBy',
+                ].includes(operation)
+              ) {
                 anyArgs.where = anyArgs.where || {};
                 anyArgs.where.companyId = companyId;
               }
 
               // 2. Automatically restrict updates/deletes to active companyId
-              if (['update', 'updateMany', 'delete', 'deleteMany'].includes(operation)) {
+              if (
+                ['update', 'updateMany', 'delete', 'deleteMany'].includes(
+                  operation,
+                )
+              ) {
                 anyArgs.where = anyArgs.where || {};
                 anyArgs.where.companyId = companyId;
               }

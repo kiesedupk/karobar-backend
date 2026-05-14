@@ -5,6 +5,6 @@ import { AccountingController } from './accounting.controller';
 @Module({
   controllers: [AccountingController],
   providers: [AccountingService],
-  exports: [AccountingService]
+  exports: [AccountingService],
 })
 export class AccountingModule {}

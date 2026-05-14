@@ -12,7 +12,10 @@ export class CompaniesController {
   @Post()
   create(@Body() createCompanyDto: CreateCompanyDto, @CurrentUser() user: any) {
     // Override the userId with the authenticated user's ID
-    return this.companiesService.create({ ...createCompanyDto, userId: user.id });
+    return this.companiesService.create({
+      ...createCompanyDto,
+      userId: user.id,
+    });
   }
 
   @Get()
