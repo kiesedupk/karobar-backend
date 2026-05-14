@@ -21,6 +21,16 @@ export class ProductsService {
         throw new ConflictException('Product with this SKU already exists');
       }
     }
+
+    if (dto.barcode) {
+      const existing = await this.prisma.product.findUnique({
+        where: { companyId_barcode: { companyId, barcode: dto.barcode } },
+      });
+      if (existing) {
+        throw new ConflictException('Product with this Barcode already exists');
+      }
+    }
+
     return this.prisma.product.create({
       data: { ...dto, companyId },
     });
@@ -108,5 +118,24 @@ export class ProductsService {
     return this.prisma.product.delete({
       where: { id, companyId },
     });
+  }
+
+  async findByLookup(companyId: string, code: string) {
+    const product = await this.prisma.product.findFirst({
+      where: {
+        companyId,
+        OR: [
+          { sku: code },
+          { barcode: code },
+        ],
+      },
+      include: {
+        category: true,
+        uom: true,
+      },
+    });
+
+    if (!product) throw new NotFoundException('Product not found with this code');
+    return product;
   }
 }

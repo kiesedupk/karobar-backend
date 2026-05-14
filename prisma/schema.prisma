@@ -492,9 +492,12 @@ model Product {
   transferItems       WarehouseTransferItem[]
 
   @@unique([companyId, sku])
+  @@unique([companyId, barcode])
   @@index([companyId])
   @@index([categoryId])
   @@index([uomId])
+  @@index([sku])
+  @@index([barcode])
   @@index([type])
 }
 

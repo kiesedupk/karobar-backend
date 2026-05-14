@@ -42,6 +42,14 @@ export class ProductsController {
     );
   }
 
+  @Get('lookup/:code')
+  findByLookup(
+    @Query('companyId') companyId: string,
+    @Param('code') code: string,
+  ) {
+    return this.productsService.findByLookup(companyId, code);
+  }
+
   @Get(':id')
   findOne(@Query('companyId') companyId: string, @Param('id') id: string) {
     return this.productsService.findOne(companyId, id);
