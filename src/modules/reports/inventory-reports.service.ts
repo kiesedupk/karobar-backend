@@ -232,4 +232,81 @@ export class InventoryReportsService {
       notes: t.notes,
     }));
   }
+
+  // ================================================================
+  // 6. INVENTORY DASHBOARD OVERVIEW
+  // ================================================================
+  async getDashboardOverview(companyId: string) {
+    await this.validateCompany(companyId);
+
+    // 1. Total Stock Value
+    const valuation = await this.getStockValuation(companyId);
+
+    // 2. Low Stock Count
+    const lowStock = await this.getLowStockReport(companyId);
+
+    // 3. Warehouse Summaries
+    const warehouses = await this.prisma.warehouse.findMany({
+      where: { companyId },
+      include: {
+        stocks: {
+          where: { quantity: { gt: 0 } },
+        },
+      },
+    });
+
+    const warehouseSummaries = warehouses.map(w => ({
+      id: w.id,
+      name: w.name,
+      totalItems: w.stocks.length,
+      totalQuantity: w.stocks.reduce((sum, s) => sum + Number(s.quantity), 0),
+    }));
+
+    // 4. Recent Movement (Last 10)
+    const recentMovement = await this.getInventoryMovement(companyId, { take: 10 } as any);
+
+    // 5. Top Selling Products (Based on Invoice Items)
+    // This requires looking at InvoiceItem table
+    const topSellers = await this.prisma.invoiceItem.groupBy({
+      by: ['productId'],
+      where: {
+        invoice: { companyId, status: 'PAID' }
+      },
+      _sum: {
+        quantity: true,
+        totalAmount: true,
+      },
+      orderBy: {
+        _sum: {
+          quantity: 'desc'
+        }
+      },
+      take: 5
+    });
+
+    // Resolve product names for top sellers
+    const topProducts = await Promise.all(topSellers.map(async (item) => {
+      if (!item.productId) return null;
+      const product = await this.prisma.product.findUnique({
+        where: { id: item.productId },
+        select: { name: true, sku: true }
+      });
+      return {
+        productId: item.productId,
+        name: product?.name || 'Unknown',
+        sku: product?.sku || '',
+        totalQty: Number(item._sum.quantity || 0),
+        totalRevenue: Number(item._sum.totalAmount || 0),
+      };
+    }));
+
+    return {
+      totalStockValue: valuation.totalInventoryValue,
+      lowStockCount: lowStock.length,
+      lowStockItems: lowStock.slice(0, 5), // Return first 5 for the widget
+      warehouseSummaries,
+      recentMovement: recentMovement.slice(0, 5),
+      topSellingProducts: topProducts.filter(Boolean),
+    };
+  }
 }

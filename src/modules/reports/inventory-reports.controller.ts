@@ -72,4 +72,14 @@ export class InventoryReportsController {
       warehouseId,
     });
   }
+
+  /**
+   * GET /reports/inventory/dashboard-stats?companyId=xxx
+   * Combined inventory stats for dashboard widgets
+   */
+  @Permissions('report:read')
+  @Get('dashboard-stats')
+  getDashboardStats(@Query('companyId') companyId: string) {
+    return this.inventoryReportsService.getDashboardOverview(companyId);
+  }
 }
