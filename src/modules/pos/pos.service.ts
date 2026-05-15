@@ -75,6 +75,28 @@ export class PosService {
       let subTotal = 0;
       let totalTax = 0;
       let totalDiscount = 0;
+      let totalCogs = 0;
+
+      // 2a. Discover Default Accounts for Journal Entries
+      const accounts = await tx.account.findMany({
+        where: {
+          companyId,
+          code: { in: ['1010', '1020', '1100', '1200', '2200', '4010', '5010'] }
+        }
+      });
+      const getAcctId = (code: string) => {
+        const acct = accounts.find(a => a.code === code);
+        if (!acct) throw new BadRequestException(`Required account code ${code} is missing from Chart of Accounts`);
+        return acct.id;
+      };
+
+      const cashAccountId = getAcctId('1010');
+      const bankAccountId = getAcctId('1020'); // Card/Bank payments map here
+      const arAccountId = getAcctId('1100');
+      const inventoryAccountId = getAcctId('1200');
+      const taxAccountId = getAcctId('2200');
+      const salesAccountId = getAcctId('4010');
+      const cogsAccountId = getAcctId('5010');
 
       const itemsWithDetails = await Promise.all(dto.items.map(async (item) => {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
@@ -84,8 +106,11 @@ export class PosService {
         const discount = (lineTotal * (item.discountRate || 0)) / 100;
         const netTotal = lineTotal - discount;
         
+        const cogs = Number(item.quantity) * Number(product.costPrice || 0);
+        
         subTotal += lineTotal;
         totalDiscount += discount;
+        totalCogs += cogs;
         
         return {
           ...item,
@@ -179,9 +204,98 @@ export class PosService {
         }
       }
 
-      // 6. Accounting Integration (Simplified for now)
-      // In a real scenario, we'd create a JournalEntry here.
-      // For this MVP, we assume the financial tracking is handled via the Invoice and Payment records.
+      // 6. Accounting Journal Entries
+      const journalLines = [];
+      
+      // Credit: Sales Revenue
+      journalLines.push({
+        accountId: salesAccountId,
+        credit: subTotal - totalDiscount,
+        debit: 0,
+        description: `POS Sale - ${invoiceNumber}`
+      });
+
+      // Credit: Tax Payable
+      if (totalTax > 0) {
+        journalLines.push({
+          accountId: taxAccountId,
+          credit: totalTax,
+          debit: 0,
+          description: `Tax on ${invoiceNumber}`
+        });
+      }
+
+      // Debit: Payments (Cash / Bank)
+      let recordedPaymentTotal = 0;
+      for (const payment of paymentsToRecord) {
+        if (payment.amount > 0) {
+          recordedPaymentTotal += payment.amount;
+          journalLines.push({
+            accountId: payment.method === 'CASH' ? cashAccountId : bankAccountId,
+            debit: payment.amount,
+            credit: 0,
+            description: `Payment for ${invoiceNumber} via ${payment.method}`
+          });
+        }
+      }
+
+      // Debit: Accounts Receivable (for any unpaid balance)
+      const balanceDue = totalAmount - recordedPaymentTotal;
+      if (balanceDue > 0) {
+        journalLines.push({
+          accountId: arAccountId,
+          debit: balanceDue,
+          credit: 0,
+          description: `Unpaid balance for ${invoiceNumber}`
+        });
+      }
+
+      // Create Sales Journal Entry
+      const salesJournal = await tx.journalEntry.create({
+        data: {
+          companyId,
+          date: new Date(),
+          reference: invoiceNumber,
+          description: `POS Checkout ${invoiceNumber}`,
+          status: 'POSTED',
+          lines: { create: journalLines }
+        }
+      });
+      
+      // Link Journal Entry to Invoice
+      await tx.invoice.update({
+        where: { id: invoice.id },
+        data: { journalEntryId: salesJournal.id }
+      });
+
+      // 7. COGS & Inventory Journal Entry
+      if (totalCogs > 0) {
+        await tx.journalEntry.create({
+          data: {
+            companyId,
+            date: new Date(),
+            reference: `COGS-${invoiceNumber}`,
+            description: `Cost of Goods Sold for ${invoiceNumber}`,
+            status: 'POSTED',
+            lines: {
+              create: [
+                {
+                  accountId: cogsAccountId,
+                  debit: totalCogs,
+                  credit: 0,
+                  description: `COGS for ${invoiceNumber}`
+                },
+                {
+                  accountId: inventoryAccountId,
+                  credit: totalCogs,
+                  debit: 0,
+                  description: `Inventory reduction for ${invoiceNumber}`
+                }
+              ]
+            }
+          }
+        });
+      }
 
       return invoice;
     });
