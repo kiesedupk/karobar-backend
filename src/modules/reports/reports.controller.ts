@@ -94,4 +94,21 @@ export class ReportsController {
       endDate,
     });
   }
+
+  /**
+   * GET /reports/tax-summary?companyId=xxx&startDate=...&endDate=...
+   * Tax / GST Summary — Tax Collected (Sales) and Tax Paid (Purchases).
+   */
+  @Permissions('report:read')
+  @Get('tax-summary')
+  getTaxSummary(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getTaxSummary(companyId, {
+      startDate,
+      endDate,
+    });
+  }
 }
