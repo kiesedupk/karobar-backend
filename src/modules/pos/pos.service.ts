@@ -1,7 +1,8 @@
 import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
-import { CreatePosSessionDto, PosCheckoutDto } from './dto/pos.dto';
+import { CreatePosSessionDto, PosCheckoutDto, ClosePosSessionDto } from './dto/pos.dto';
 import { InventoryService } from '../inventory/inventory.service';
+import { Decimal } from '@prisma/client/runtime/library';
 
 @Injectable()
 export class PosService {
@@ -30,19 +31,104 @@ export class PosService {
     });
   }
 
-  async closeSession(companyId: string, id: string, closingBalance: number, notes?: string) {
-    const session = await this.prisma.posSession.findUnique({ where: { id } });
+  async getSessionSummary(companyId: string, id: string) {
+    const session = await this.prisma.posSession.findUnique({
+      where: { id },
+      include: {
+        invoices: {
+          include: { payments: true }
+        }
+      }
+    });
+
+    if (!session || session.companyId !== companyId) throw new NotFoundException('Session not found');
+
+    const summary = {
+      openingBalance: Number(session.openingBalance),
+      cashSales: 0,
+      cardSales: 0,
+      bankSales: 0,
+      totalSales: 0,
+      expectedCash: 0,
+    };
+
+    session.invoices.forEach(inv => {
+      inv.payments.forEach(p => {
+        const amt = Number(p.amount);
+        if (p.method === 'CASH') summary.cashSales += amt;
+        else if (p.method === 'CARD') summary.cardSales += amt;
+        else if (p.method === 'BANK') summary.bankSales += amt;
+      });
+      summary.totalSales += Number(inv.totalAmount);
+    });
+
+    summary.expectedCash = summary.openingBalance + summary.cashSales;
+
+    return summary;
+  }
+
+  async closeSession(companyId: string, id: string, dto: ClosePosSessionDto) {
+    const session = await this.prisma.posSession.findUnique({ 
+      where: { id },
+      include: { warehouse: true }
+    });
+    
     if (!session || session.companyId !== companyId) throw new NotFoundException('Session not found');
     if (session.status === 'CLOSED') throw new BadRequestException('Session already closed');
 
-    return this.prisma.posSession.update({
-      where: { id },
-      data: {
-        status: 'CLOSED',
-        closedAt: new Date(),
-        closingBalance,
-        notes: notes || session.notes,
-      },
+    const summary = await this.getSessionSummary(companyId, id);
+    const variance = Number(dto.closingBalance) - summary.expectedCash;
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Update Session
+      const updatedSession = await tx.posSession.update({
+        where: { id },
+        data: {
+          status: 'CLOSED',
+          closedAt: new Date(),
+          closingBalance: dto.closingBalance,
+          notes: dto.notes,
+        },
+      });
+
+      // 2. Handle Variance Accounting
+      if (Math.abs(variance) > 0.01) {
+        // Find Accounts
+        const cashAccount = await tx.account.findFirst({ where: { companyId, code: '1010' } });
+        const varianceAccount = await tx.account.findFirst({ 
+          where: { companyId, code: variance < 0 ? '5900' : '4100' } // 5900 Exp if shortage, 4100 Income if overage
+        });
+
+        if (cashAccount && varianceAccount) {
+          await tx.journalEntry.create({
+            data: {
+              companyId,
+              date: new Date(),
+              reference: `VAR-${session.id.slice(0, 8)}`,
+              description: `POS Cash Reconciliation Variance (${variance < 0 ? 'Shortage' : 'Overage'})`,
+              status: 'POSTED',
+              lines: {
+                create: [
+                  {
+                    accountId: cashAccount.id,
+                    debit: variance > 0 ? variance : 0,
+                    credit: variance < 0 ? Math.abs(variance) : 0,
+                    description: 'Cash reconciliation adjustment'
+                  },
+                  {
+                    accountId: varianceAccount.id,
+                    debit: variance < 0 ? Math.abs(variance) : 0,
+                    credit: variance > 0 ? variance : 0,
+                    description: 'POS Variance recognition'
+                  }
+                ]
+              }
+            }
+          });
+        }
+      }
+
+      return updatedSession;
     });
   }
 

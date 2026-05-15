@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Body, Param, Query, UseGuards, Put } from '@nestjs/common';
 import { PosService } from './pos.service';
-import { CreatePosSessionDto, PosCheckoutDto } from './dto/pos.dto';
+import { CreatePosSessionDto, PosCheckoutDto, ClosePosSessionDto } from './dto/pos.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 
@@ -18,14 +18,21 @@ export class PosController {
     return this.posService.openSession(companyId, user.id, dto);
   }
 
+  @Get('session/:id/summary')
+  getSessionSummary(
+    @Query('companyId') companyId: string,
+    @Param('id') id: string,
+  ) {
+    return this.posService.getSessionSummary(companyId, id);
+  }
+
   @Post('session/:id/close')
   closeSession(
     @Query('companyId') companyId: string,
     @Param('id') id: string,
-    @Body('closingBalance') closingBalance: number,
-    @Body('notes') notes?: string,
+    @Body() dto: ClosePosSessionDto,
   ) {
-    return this.posService.closeSession(companyId, id, closingBalance, notes);
+    return this.posService.closeSession(companyId, id, dto);
   }
 
   @Get('session/active')

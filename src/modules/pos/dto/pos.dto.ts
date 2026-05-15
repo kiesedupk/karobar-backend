@@ -63,3 +63,13 @@ export class PosCheckoutDto {
   @IsString()
   notes?: string;
 }
+
+export class ClosePosSessionDto {
+  @IsNumber()
+  @Min(0)
+  closingBalance: number;
+
+  @IsOptional()
+  @IsString()
+  notes?: string;
+}
