@@ -10,6 +10,10 @@ import { Type } from 'class-transformer';
 export class StockInDto {
   @IsString()
   @IsNotEmpty()
+  companyId: string;
+
+  @IsString()
+  @IsNotEmpty()
   warehouseId: string;
 
   @IsString()
@@ -40,6 +44,10 @@ export class StockInDto {
 export class StockOutDto {
   @IsString()
   @IsNotEmpty()
+  companyId: string;
+
+  @IsString()
+  @IsNotEmpty()
   warehouseId: string;
 
   @IsString()
@@ -68,6 +76,10 @@ export class StockOutDto {
 }
 
 export class StockAdjustmentDto {
+  @IsString()
+  @IsNotEmpty()
+  companyId: string;
+
   @IsString()
   @IsNotEmpty()
   warehouseId: string;
