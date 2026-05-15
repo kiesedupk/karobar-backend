@@ -792,6 +792,77 @@ export class ReportsService {
   }
 
   // ================================================================
+  // 6. TAX / GST SUMMARY
+  // ================================================================
+  async getTaxSummary(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+
+    const invoiceWhere: any = { companyId, status: { not: 'DRAFT' } };
+    const billWhere: any = { companyId, status: { not: 'DRAFT' } };
+
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      invoiceWhere.issueDate = {};
+      billWhere.billDate = {};
+      if (dateFilter.startDate) {
+        invoiceWhere.issueDate.gte = new Date(dateFilter.startDate);
+        billWhere.billDate.gte = new Date(dateFilter.startDate);
+      }
+      if (dateFilter.endDate) {
+        invoiceWhere.issueDate.lte = new Date(dateFilter.endDate);
+        billWhere.billDate.lte = new Date(dateFilter.endDate);
+      }
+    }
+
+    // Tax Collected from Invoices (Sales)
+    const invoices = await this.prisma.invoice.findMany({
+      where: invoiceWhere,
+      select: { invoiceNumber: true, issueDate: true, subTotal: true, taxAmount: true, totalAmount: true },
+    });
+
+    // Tax Paid on Purchases (Bills)
+    const bills = await this.prisma.purchaseBill.findMany({
+      where: billWhere,
+      select: { billNumber: true, billDate: true, subTotal: true, taxAmount: true, totalAmount: true },
+    });
+
+    const totalTaxCollected = invoices.reduce((sum, i) => sum.plus(new Decimal(i.taxAmount)), new Decimal(0));
+    const totalTaxPaid = bills.reduce((sum, b) => sum.plus(new Decimal(b.taxAmount)), new Decimal(0));
+    const netTaxPayable = totalTaxCollected.minus(totalTaxPaid);
+
+    return {
+      reportName: 'Tax / GST Summary',
+      companyId,
+      dateRange: {
+        from: dateFilter?.startDate || 'All Time',
+        to: dateFilter?.endDate || 'Present',
+      },
+      generatedAt: new Date().toISOString(),
+      salesTax: {
+        totalCollected: totalTaxCollected.toFixed(2),
+        invoices: invoices.map(i => ({
+          number: i.invoiceNumber,
+          date: i.issueDate,
+          taxAmount: new Decimal(i.taxAmount).toFixed(2),
+          totalAmount: new Decimal(i.totalAmount).toFixed(2)
+        })).filter(i => parseFloat(i.taxAmount) > 0)
+      },
+      purchaseTax: {
+        totalPaid: totalTaxPaid.toFixed(2),
+        bills: bills.map(b => ({
+          number: b.billNumber,
+          date: b.billDate,
+          taxAmount: new Decimal(b.taxAmount).toFixed(2),
+          totalAmount: new Decimal(b.totalAmount).toFixed(2)
+        })).filter(b => parseFloat(b.taxAmount) > 0)
+      },
+      summary: {
+        netTaxPayable: netTaxPayable.toFixed(2),
+        status: netTaxPayable.greaterThan(0) ? 'PAYABLE' : (netTaxPayable.lessThan(0) ? 'REFUNDABLE' : 'NIL')
+      }
+    };
+  }
+
+  // ================================================================
   // PRIVATE HELPERS
   // ================================================================
   private async validateCompany(companyId: string) {
