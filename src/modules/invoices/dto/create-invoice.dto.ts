@@ -70,6 +70,11 @@ export class CreateInvoiceDto {
   globalDiscountAmount?: number; // Flat discount on total (in currency)
 
   @IsOptional()
+  @IsNumber()
+  @Min(0)
+  redeemLoyaltyPoints?: number; // Number of points to redeem (1 point = 1 unit of currency discount)
+
+  @IsOptional()
   @IsString()
   warehouseId?: string; // Optional: warehouse to deduct stock from
 

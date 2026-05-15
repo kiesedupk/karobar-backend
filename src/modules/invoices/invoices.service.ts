@@ -102,7 +102,12 @@ export class InvoicesService {
       totalItemDiscount = totalItemDiscount.plus(ci.discountAmount);
     }
 
-    const globalDiscount = new Decimal(globalDiscountAmount || 0);
+    const pointsToRedeem = dto.redeemLoyaltyPoints || 0;
+    if (pointsToRedeem > customer.loyaltyPoints) {
+      throw new BadRequestException(`Cannot redeem ${pointsToRedeem} points. Customer only has ${customer.loyaltyPoints} points.`);
+    }
+
+    const globalDiscount = new Decimal(globalDiscountAmount || 0).plus(pointsToRedeem);
     const totalDiscount = totalItemDiscount.plus(globalDiscount);
     const totalAmount = subTotal.minus(totalDiscount).plus(totalTax);
 
@@ -214,10 +219,15 @@ export class InvoicesService {
         }
       }
 
-      // 3. Update customer balance (increase receivables)
+      // 3. Update customer balance (increase receivables) and Loyalty Points
+      const pointsEarned = Math.floor(Number(totalAmount) / 100);
+      const netPoints = pointsEarned - pointsToRedeem;
       await tx.customer.update({
         where: { id: customerId },
-        data: { balance: new Decimal(customer.balance).plus(totalAmount) },
+        data: { 
+          balance: new Decimal(customer.balance).plus(totalAmount),
+          loyaltyPoints: { increment: netPoints }
+        },
       });
 
       // 4. Create the Invoice with linked journal entry

@@ -111,4 +111,21 @@ export class ReportsController {
       endDate,
     });
   }
+
+  /**
+   * GET /reports/branch-summary?companyId=xxx&startDate=...&endDate=...
+   * Branch / Warehouse Summary — Sales, Purchases, and Inventory by branch.
+   */
+  @Permissions('report:read')
+  @Get('branch-summary')
+  getBranchSummary(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getBranchSummary(companyId, {
+      startDate,
+      endDate,
+    });
+  }
 }
