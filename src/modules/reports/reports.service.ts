@@ -863,6 +863,97 @@ export class ReportsService {
   }
 
   // ================================================================
+  // 7. BRANCH / WAREHOUSE SUMMARY
+  // ================================================================
+  async getBranchSummary(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+
+    const branches = await this.prisma.warehouse.findMany({
+      where: { companyId, status: 'ACTIVE' },
+    });
+
+    const results = [];
+
+    const dateWhere: any = {};
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      dateWhere.date = {};
+      if (dateFilter.startDate) dateWhere.date.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) dateWhere.date.lte = new Date(dateFilter.endDate);
+    }
+
+    for (const branch of branches) {
+      // Sales
+      const invoicesWhere: any = {
+        companyId,
+        warehouseId: branch.id,
+        status: { not: 'DRAFT' },
+      };
+      if (dateFilter?.startDate) invoicesWhere.issueDate = { ...invoicesWhere.issueDate, gte: new Date(dateFilter.startDate) };
+      if (dateFilter?.endDate) invoicesWhere.issueDate = { ...invoicesWhere.issueDate, lte: new Date(dateFilter.endDate) };
+
+      const invoices = await this.prisma.invoice.aggregate({
+        where: invoicesWhere,
+        _sum: { totalAmount: true },
+        _count: { id: true },
+      });
+
+      // Purchases
+      const billsWhere: any = {
+        companyId,
+        warehouseId: branch.id,
+        status: { not: 'DRAFT' },
+      };
+      if (dateFilter?.startDate) billsWhere.billDate = { ...billsWhere.billDate, gte: new Date(dateFilter.startDate) };
+      if (dateFilter?.endDate) billsWhere.billDate = { ...billsWhere.billDate, lte: new Date(dateFilter.endDate) };
+
+      const bills = await this.prisma.purchaseBill.aggregate({
+        where: billsWhere,
+        _sum: { totalAmount: true },
+      });
+
+      // Stock Value
+      const fifoLayers = await this.prisma.inventoryFifoLayer.aggregate({
+        where: { companyId, warehouseId: branch.id, remainingQty: { gt: 0 } },
+        _sum: { remainingQty: true },
+      });
+
+      const layers = await this.prisma.inventoryFifoLayer.findMany({
+        where: { companyId, warehouseId: branch.id, remainingQty: { gt: 0 } },
+        select: { remainingQty: true, unitCost: true },
+      });
+      const stockValue = layers.reduce((sum, layer) => sum.plus(new Decimal(layer.remainingQty).mul(new Decimal(layer.unitCost))), new Decimal(0));
+
+      results.push({
+        branchId: branch.id,
+        branchName: branch.name,
+        location: branch.location,
+        sales: {
+          totalAmount: new Decimal(invoices._sum.totalAmount || 0).toFixed(2),
+          invoiceCount: invoices._count.id,
+        },
+        purchases: {
+          totalAmount: new Decimal(bills._sum.totalAmount || 0).toFixed(2),
+        },
+        inventory: {
+          totalItems: new Decimal(fifoLayers._sum.remainingQty || 0).toFixed(2),
+          totalValue: stockValue.toFixed(2),
+        }
+      });
+    }
+
+    return {
+      reportName: 'Branch / Warehouse Summary',
+      companyId,
+      dateRange: {
+        from: dateFilter?.startDate || 'All Time',
+        to: dateFilter?.endDate || 'Present',
+      },
+      generatedAt: new Date().toISOString(),
+      branches: results,
+    };
+  }
+
+  // ================================================================
   // PRIVATE HELPERS
   // ================================================================
   private async validateCompany(companyId: string) {
