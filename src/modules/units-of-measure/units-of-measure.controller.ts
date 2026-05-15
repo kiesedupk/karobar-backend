@@ -20,11 +20,8 @@ export class UnitsOfMeasureController {
   constructor(private readonly unitsService: UnitsOfMeasureService) {}
 
   @Post()
-  create(
-    @Body('companyId') companyId: string,
-    @Body() createDto: CreateUnitDto,
-  ) {
-    return this.unitsService.create(companyId, createDto);
+  create(@Body() createDto: CreateUnitDto) {
+    return this.unitsService.create(createDto.companyId, createDto);
   }
 
   @Get()

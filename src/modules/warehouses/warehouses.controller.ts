@@ -20,11 +20,8 @@ export class WarehousesController {
   constructor(private readonly warehousesService: WarehousesService) {}
 
   @Post()
-  create(
-    @Body('companyId') companyId: string,
-    @Body() createDto: CreateWarehouseDto,
-  ) {
-    return this.warehousesService.create(companyId, createDto);
+  create(@Body() createDto: CreateWarehouseDto) {
+    return this.warehousesService.create(createDto.companyId, createDto);
   }
 
   @Get()

@@ -17,6 +17,10 @@ export enum ProductType {
 export class CreateProductDto {
   @IsString()
   @IsNotEmpty()
+  companyId: string;
+
+  @IsString()
+  @IsNotEmpty()
   name: string;
 
   @IsString()
