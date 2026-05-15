@@ -97,6 +97,25 @@ export class PosService {
 
       const totalAmount = subTotal - totalDiscount + totalTax;
 
+      // Calculate Payments and Change
+      let totalPaid = 0;
+      let cashPaymentIndex = -1;
+      
+      const paymentsToRecord = [...dto.payments];
+
+      paymentsToRecord.forEach((p, index) => {
+        totalPaid += p.amount;
+        if (p.method === 'CASH') cashPaymentIndex = index;
+      });
+
+      const changeDue = totalPaid > totalAmount ? totalPaid - totalAmount : 0;
+      
+      // If there is change, subtract it from the Cash payment
+      if (changeDue > 0 && cashPaymentIndex >= 0) {
+        paymentsToRecord[cashPaymentIndex].amount -= changeDue;
+        totalPaid -= changeDue; // Adjust total paid to match exact invoice total
+      }
+
       // 3. Create Invoice
       const invoice = await tx.invoice.create({
         data: {
@@ -108,8 +127,8 @@ export class PosService {
           discountAmount: totalDiscount,
           taxAmount: totalTax,
           totalAmount,
-          paidAmount: dto.amountPaid,
-          status: dto.amountPaid >= totalAmount ? 'PAID' : 'PARTIAL',
+          paidAmount: totalPaid,
+          status: totalPaid >= totalAmount ? 'PAID' : 'PARTIAL',
           notes: dto.notes,
           warehouseId: session.warehouseId,
           posSessionId: session.id,
@@ -127,18 +146,20 @@ export class PosService {
         },
       });
 
-      // 4. Record Payment
-      if (dto.amountPaid > 0) {
-        await tx.payment.create({
-          data: {
-            companyId,
-            invoiceId: invoice.id,
-            amount: dto.amountPaid,
-            method: dto.paymentMethod,
-            paymentDate: new Date(),
-            notes: 'POS Payment',
-          }
-        });
+      // 4. Record Payments
+      for (const payment of paymentsToRecord) {
+        if (payment.amount > 0) {
+          await tx.payment.create({
+            data: {
+              companyId,
+              invoiceId: invoice.id,
+              amount: payment.amount,
+              method: payment.method,
+              paymentDate: new Date(),
+              notes: 'POS Payment',
+            }
+          });
+        }
       }
 
       // 5. Deduct Inventory & Create Logs

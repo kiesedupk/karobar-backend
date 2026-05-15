@@ -32,6 +32,15 @@ export class PosItemDto {
   discountRate?: number;
 }
 
+export class PosPaymentSplitDto {
+  @IsString()
+  method: string;
+
+  @IsNumber()
+  @Min(0)
+  amount: number;
+}
+
 export class PosCheckoutDto {
   @IsUUID()
   sessionId: string;
@@ -45,12 +54,10 @@ export class PosCheckoutDto {
   @Type(() => PosItemDto)
   items: PosItemDto[];
 
-  @IsString()
-  paymentMethod: string;
-
-  @IsNumber()
-  @Min(0)
-  amountPaid: number;
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => PosPaymentSplitDto)
+  payments: PosPaymentSplitDto[];
 
   @IsOptional()
   @IsString()
