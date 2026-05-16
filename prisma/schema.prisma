@@ -55,6 +55,7 @@ model Company {
   stockTakes                StockTake[]
   posSessions               PosSession[]
   posHeldCarts              PosHeldCart[]
+  subscriptionPayments      SubscriptionPayment[]
 }
 
 model FiscalYear {
@@ -825,4 +826,41 @@ model ActivityLog {
   @@index([action])
   @@index([performedBy])
   @@index([createdAt])
+}
+
+// ── Subscription Payments (Phase 4 - Billing) ─────────────────────────
+model SubscriptionPayment {
+  id            String   @id @default(uuid())
+  companyId     String
+  company       Company  @relation(fields: [companyId], references: [id])
+  amount        Decimal
+  currency      String   @default("PKR")
+  method        String   // CASH, BANK_TRANSFER, JAZZCASH, EASYPAISA, CARD
+  plan          String   // BASIC, PRO, ENTERPRISE
+  months        Int      @default(1) // duration in months
+  reference     String?  // transaction reference/receipt number
+  notes         String?
+  recordedBy    String?  // super admin who recorded this
+  status        String   @default("COMPLETED") // COMPLETED, PENDING, REFUNDED
+  createdAt     DateTime @default(now())
+
+  @@index([companyId])
+  @@index([createdAt])
+}
+
+// ── Coupon Codes (Phase 4 - Discounts) ────────────────────────────────
+model CouponCode {
+  id            String    @id @default(uuid())
+  code          String    @unique
+  discountType  String    // PERCENTAGE, FIXED
+  discountValue Decimal
+  maxUses       Int       @default(1)
+  usedCount     Int       @default(0)
+  validFrom     DateTime  @default(now())
+  validUntil    DateTime?
+  applicablePlan String?  // null = all plans
+  isActive      Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+
+  @@index([code])
 }
