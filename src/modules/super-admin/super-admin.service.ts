@@ -475,4 +475,126 @@ export class SuperAdminService {
       timestamp: new Date().toISOString(),
     };
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 4 — BILLING
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── #10. Record Payment ────────────────────────────────────────────────
+  async recordPayment(data: {
+    companyId: string;
+    amount: number;
+    method: string;
+    plan: string;
+    months: number;
+    reference?: string;
+    notes?: string;
+    recordedBy: string;
+  }) {
+    // Create payment record
+    const payment = await this.prisma.subscriptionPayment.create({
+      data: {
+        companyId: data.companyId,
+        amount: data.amount,
+        method: data.method,
+        plan: data.plan,
+        months: data.months,
+        reference: data.reference,
+        notes: data.notes,
+        recordedBy: data.recordedBy,
+      },
+    });
+
+    // Update company plan & extend subscription
+    const trialEndsAt = new Date();
+    trialEndsAt.setMonth(trialEndsAt.getMonth() + data.months);
+
+    await this.prisma.company.update({
+      where: { id: data.companyId },
+      data: {
+        plan: data.plan,
+        subscriptionStatus: 'ACTIVE',
+        trialEndsAt,
+        suspendedReason: null,
+      },
+    });
+
+    return payment;
+  }
+
+  async getPayments(companyId?: string) {
+    return this.prisma.subscriptionPayment.findMany({
+      where: companyId ? { companyId } : undefined,
+      orderBy: { createdAt: 'desc' },
+      include: {
+        company: { select: { id: true, name: true } },
+      },
+    });
+  }
+
+  // ── #11. Invoice Generation ────────────────────────────────────────────
+  async generateInvoice(companyId: string) {
+    const company = await this.prisma.company.findUnique({ where: { id: companyId } });
+    if (!company) throw new Error('Company not found');
+
+    const planPrices: Record<string, number> = {
+      BASIC: 2000, PRO: 5000, ENTERPRISE: 15000,
+    };
+
+    const amount = planPrices[company.plan] || 0;
+
+    return {
+      invoiceNumber: `INV-${Date.now()}`,
+      companyId: company.id,
+      companyName: company.name,
+      plan: company.plan,
+      amount,
+      currency: 'PKR',
+      dueDate: new Date(Date.now() + 7 * 86400000).toISOString(),
+      generatedAt: new Date().toISOString(),
+      items: [
+        { description: `${company.plan} ماہانہ سبسکرپشن — ${company.name}`, amount },
+      ],
+    };
+  }
+
+  // ── #12. Coupon Codes ──────────────────────────────────────────────────
+  async createCoupon(data: {
+    code: string;
+    discountType: string;
+    discountValue: number;
+    maxUses: number;
+    validUntil?: string;
+    applicablePlan?: string;
+  }) {
+    return this.prisma.couponCode.create({
+      data: {
+        code: data.code.toUpperCase(),
+        discountType: data.discountType,
+        discountValue: data.discountValue,
+        maxUses: data.maxUses,
+        validUntil: data.validUntil ? new Date(data.validUntil) : null,
+        applicablePlan: data.applicablePlan || null,
+      },
+    });
+  }
+
+  async getCoupons() {
+    return this.prisma.couponCode.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async toggleCoupon(id: string) {
+    const coupon = await this.prisma.couponCode.findUnique({ where: { id } });
+    if (!coupon) throw new Error('Coupon not found');
+    return this.prisma.couponCode.update({
+      where: { id },
+      data: { isActive: !coupon.isActive },
+    });
+  }
+
+  async deleteCoupon(id: string) {
+    return this.prisma.couponCode.delete({ where: { id } });
+  }
 }

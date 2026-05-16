@@ -108,4 +108,41 @@ export class SuperAdminController {
   getSystemHealth() {
     return this.service.getSystemHealth();
   }
+
+  // ── Phase 4 Endpoints (Billing) ───────────────────────────────────────
+
+  @Post('payments')
+  recordPayment(@Body() body: any, @Req() req: any) {
+    return this.service.recordPayment({ ...body, recordedBy: req.user.sub });
+  }
+
+  @Get('payments')
+  getPayments(@Query('companyId') companyId?: string) {
+    return this.service.getPayments(companyId);
+  }
+
+  @Post('companies/:id/invoice')
+  generateInvoice(@Param('id') id: string) {
+    return this.service.generateInvoice(id);
+  }
+
+  @Post('coupons')
+  createCoupon(@Body() body: any) {
+    return this.service.createCoupon(body);
+  }
+
+  @Get('coupons')
+  getCoupons() {
+    return this.service.getCoupons();
+  }
+
+  @Patch('coupons/:id/toggle')
+  toggleCoupon(@Param('id') id: string) {
+    return this.service.toggleCoupon(id);
+  }
+
+  @Delete('coupons/:id')
+  deleteCoupon(@Param('id') id: string) {
+    return this.service.deleteCoupon(id);
+  }
 }
