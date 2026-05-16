@@ -164,25 +164,47 @@ export class PosService {
       let totalCogs = 0;
 
       // 2a. Discover Default Accounts for Journal Entries
+      const requiredCodes = ['1010', '1020', '1100', '1200', '2200', '4010', '5010'];
       const accounts = await tx.account.findMany({
         where: {
           companyId,
-          code: { in: ['1010', '1020', '1100', '1200', '2200', '4010', '5010'] }
+          code: { in: requiredCodes }
         }
       });
-      const getAcctId = (code: string) => {
+      
+      const getAcctId = async (code: string) => {
         const acct = accounts.find(a => a.code === code);
-        if (!acct) throw new BadRequestException(`Required account code ${code} is missing from Chart of Accounts`);
-        return acct.id;
+        if (acct) return acct.id;
+        
+        // Auto-create missing account robustly
+        let name = '';
+        let type = '';
+        let subType = '';
+        
+        switch(code) {
+          case '1010': name = 'Cash on Hand'; type = 'ASSET'; subType = 'CASH'; break;
+          case '1020': name = 'Bank Accounts'; type = 'ASSET'; subType = 'BANK'; break;
+          case '1100': name = 'Accounts Receivable'; type = 'ASSET'; subType = 'RECEIVABLE'; break;
+          case '1200': name = 'Inventory'; type = 'ASSET'; subType = 'INVENTORY'; break;
+          case '2200': name = 'GST / Sales Tax Payable'; type = 'LIABILITY'; subType = 'TAX'; break;
+          case '4010': name = 'Sales Revenue'; type = 'REVENUE'; subType = 'SALES'; break;
+          case '5010': name = 'Cost of Goods Sold'; type = 'EXPENSE'; subType = 'COGS'; break;
+        }
+        
+        const newAcct = await tx.account.create({
+          data: { companyId, code, name, type: type as any, subType, isActive: true }
+        });
+        accounts.push(newAcct); // cache it
+        return newAcct.id;
       };
 
-      const cashAccountId = getAcctId('1010');
-      const bankAccountId = getAcctId('1020'); // Card/Bank payments map here
-      const arAccountId = getAcctId('1100');
-      const inventoryAccountId = getAcctId('1200');
-      const taxAccountId = getAcctId('2200');
-      const salesAccountId = getAcctId('4010');
-      const cogsAccountId = getAcctId('5010');
+      const cashAccountId = await getAcctId('1010');
+      const bankAccountId = await getAcctId('1020'); // Card/Bank payments map here
+      const arAccountId = await getAcctId('1100');
+      const inventoryAccountId = await getAcctId('1200');
+      const taxAccountId = await getAcctId('2200');
+      const salesAccountId = await getAcctId('4010');
+      const cogsAccountId = await getAcctId('5010');
 
       const itemsWithDetails = await Promise.all(dto.items.map(async (item) => {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
