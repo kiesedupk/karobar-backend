@@ -31,9 +31,11 @@ export class InventoryService {
     const adjustment = type === 'INCREASE' ? quantity : -quantity;
     const newQty = previousQty + adjustment;
 
-    if (newQty < 0) {
-      throw new BadRequestException(`Insufficient stock for product in warehouse. Current: ${previousQty}, Adjustment: ${adjustment}`);
-    }
+    // In many POS systems, selling items before they are officially received in software is common.
+    // We allow negative stock here to prevent the POS from blocking physical sales.
+    // if (newQty < 0) {
+    //   throw new BadRequestException(`Insufficient stock for product in warehouse. Current: ${previousQty}, Adjustment: ${adjustment}`);
+    // }
 
     // 2. Update WarehouseStock
     if (warehouseStock) {
