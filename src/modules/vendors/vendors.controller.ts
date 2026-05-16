@@ -60,4 +60,10 @@ export class VendorsController {
   remove(@Param('id') id: string, @Query('companyId') companyId: string) {
     return this.vendorsService.remove(id, companyId);
   }
+
+  @Permissions('report:read')
+  @Get(':id/statement')
+  getStatement(@Param('id') id: string, @Query('companyId') companyId: string) {
+    return this.vendorsService.getStatement(id, companyId);
+  }
 }
