@@ -1,4 +1,4 @@
-import { Controller, Get, Patch, Param, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Patch, Delete, Post, Param, Body, Query, UseGuards, Req } from '@nestjs/common';
 import { SuperAdminGuard } from './super-admin.guard';
 import { SuperAdminService } from './super-admin.service';
 
@@ -46,4 +46,37 @@ export class SuperAdminController {
   updateNotes(@Param('id') id: string, @Body('notes') notes: string) {
     return this.service.updateNotes(id, notes);
   }
+
+  // ── Phase 2 Endpoints ─────────────────────────────────────────────────
+
+  @Delete('companies/:id')
+  deleteCompany(@Param('id') id: string) {
+    return this.service.deleteCompany(id);
+  }
+
+  @Get('users')
+  getAllUsers(@Query('companyId') companyId?: string) {
+    return this.service.getAllUsers(companyId);
+  }
+
+  @Patch('users/:id/toggle')
+  toggleUserActive(@Param('id') id: string) {
+    return this.service.toggleUserActive(id);
+  }
+
+  @Patch('users/:id/password')
+  resetPassword(@Param('id') id: string, @Body('password') password: string) {
+    return this.service.resetUserPassword(id, password);
+  }
+
+  @Post('companies/:id/login-as')
+  loginAsCompany(@Param('id') id: string, @Req() req: any) {
+    return this.service.loginAsCompany(id, req.user.sub);
+  }
+
+  @Post('expire-trials')
+  manualExpireTrials() {
+    return this.service.expireTrials();
+  }
 }
+

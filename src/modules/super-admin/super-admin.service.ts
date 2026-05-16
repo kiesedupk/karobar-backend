@@ -1,9 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service';
+import { JwtService } from '@nestjs/jwt';
+import * as bcrypt from 'bcryptjs';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 @Injectable()
 export class SuperAdminService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private jwtService: JwtService,
+  ) {}
 
   // ── 1. Stats ──────────────────────────────────────────────────────────
   async getStats() {
@@ -130,4 +136,163 @@ export class SuperAdminService {
       data: { adminNotes: notes },
     });
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 2 — NEW FEATURES
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── #1. Delete company ─────────────────────────────────────────────────
+  async deleteCompany(id: string) {
+    // Delete all related data in correct FK order using raw SQL
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "JournalLine" WHERE "journalEntryId" IN (SELECT id FROM "JournalEntry" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "JournalEntry" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "InvoiceItem" WHERE "invoiceId" IN (SELECT id FROM "Invoice" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Payment" WHERE "invoiceId" IN (SELECT id FROM "Invoice" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Invoice" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Expense" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "StockAdjustmentItem" WHERE "adjustmentId" IN (SELECT id FROM "StockAdjustment" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "StockAdjustment" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "StockTakeItem" WHERE "stockTakeId" IN (SELECT id FROM "StockTake" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "StockTake" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "WarehouseTransferItem" WHERE "transferId" IN (SELECT id FROM "WarehouseTransfer" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "WarehouseTransfer" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "PurchaseBillItem" WHERE "billId" IN (SELECT id FROM "PurchaseBill" WHERE "companyId" = '${id}')`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "PurchaseBill" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "StockTransaction" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "WarehouseStock" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "PosHeldCart" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "PosSession" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Product" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "ProductCategory" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "UnitOfMeasure" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Account" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Customer" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Vendor" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "BankAccount" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "AccountingPeriod" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Warehouse" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "UserCompany" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Role" WHERE "companyId" = '${id}'`);
+    await this.prisma.$executeRawUnsafe(`DELETE FROM "Company" WHERE "id" = '${id}'`);
+
+    return { message: 'Company deleted successfully' };
+  }
+
+  // ── #2. Toggle user active/inactive ────────────────────────────────────
+  async toggleUserActive(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new Error('User not found');
+
+    return this.prisma.user.update({
+      where: { id: userId },
+      data: { isActive: !user.isActive },
+    });
+  }
+
+  // ── #3. Reset user password ────────────────────────────────────────────
+  async resetUserPassword(userId: string, newPassword: string) {
+    const hashed = await bcrypt.hash(newPassword, 12);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { password: hashed },
+    });
+    return { message: 'Password reset successfully' };
+  }
+
+  // ── #4. Auto Trial Expiry (runs daily at midnight) ─────────────────────
+  @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT)
+  async expireTrials() {
+    const result = await this.prisma.company.updateMany({
+      where: {
+        plan: 'TRIAL',
+        subscriptionStatus: 'ACTIVE',
+        trialEndsAt: { lt: new Date() },
+      },
+      data: {
+        subscriptionStatus: 'EXPIRED',
+        suspendedReason: 'ٹرائل کی مدت ختم ہو گئی ہے۔ سروس جاری رکھنے کے لیے پیڈ پلان خریدیں۔',
+      },
+    });
+    if (result.count > 0) {
+      console.log(`[CRON] Expired ${result.count} trial companies`);
+    }
+    return result;
+  }
+
+  // ── #5. Login as Company (Impersonation) ───────────────────────────────
+  async loginAsCompany(companyId: string, superAdminId: string) {
+    // Find the company's admin user
+    const companyUser = await this.prisma.userCompany.findFirst({
+      where: { companyId },
+      include: {
+        user: true,
+        role: true,
+        company: true,
+      },
+      orderBy: { createdAt: 'asc' }, // oldest = owner
+    });
+
+    if (!companyUser) throw new Error('No user found for this company');
+
+    // Generate a special token for impersonation
+    const payload = {
+      sub: companyUser.user.id,
+      email: companyUser.user.email,
+      impersonatedBy: superAdminId,
+    };
+
+    const accessToken = await this.jwtService.signAsync(payload, {
+      secret: process.env.JWT_SECRET,
+      expiresIn: '1h',
+    });
+
+    return {
+      accessToken,
+      user: {
+        id: companyUser.user.id,
+        email: companyUser.user.email,
+        firstName: companyUser.user.firstName,
+        lastName: companyUser.user.lastName,
+        isSuperAdmin: false,
+        companies: [{
+          companyId: companyUser.company.id,
+          companyName: companyUser.company.name,
+          role: companyUser.role.name,
+          permissions: companyUser.role.permissions ? companyUser.role.permissions.split(',') : [],
+          plan: (companyUser.company as any).plan,
+          subscriptionStatus: (companyUser.company as any).subscriptionStatus,
+          trialEndsAt: (companyUser.company as any).trialEndsAt,
+          subscriptionWarning: null,
+        }],
+      },
+    };
+  }
+
+  // ── #6. Get all users ──────────────────────────────────────────────────
+  async getAllUsers(companyId?: string) {
+    const where: any = { isSuperAdmin: false };
+    if (companyId) {
+      where.companies = { some: { companyId } };
+    }
+
+    return this.prisma.user.findMany({
+      where,
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        isActive: true,
+        createdAt: true,
+        companies: {
+          include: {
+            company: { select: { id: true, name: true } },
+            role: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
 }
+
