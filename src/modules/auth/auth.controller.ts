@@ -28,4 +28,11 @@ export class AuthController {
     const user = req.user;
     return this.authService.refreshToken(user.id, user.email);
   }
+
+  @UseGuards(AuthGuard('jwt'))
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  changePassword(@Request() req: any, @Body() body: { currentPassword: string; newPassword: string }) {
+    return this.authService.changePassword(req.user.sub, body.currentPassword, body.newPassword);
+  }
 }
