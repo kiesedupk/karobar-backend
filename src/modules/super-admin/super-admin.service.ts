@@ -597,4 +597,145 @@ export class SuperAdminService {
   async deleteCoupon(id: string) {
     return this.prisma.couponCode.delete({ where: { id } });
   }
+
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 5 — COMMUNICATION
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── #13. Broadcast Email ───────────────────────────────────────────────
+  async broadcastEmail(subject: string, message: string, filter?: string) {
+    // Get target companies
+    const where: any = {};
+    if (filter === 'TRIAL') where.plan = 'TRIAL';
+    if (filter === 'PAID') where.plan = { not: 'TRIAL' };
+    if (filter === 'EXPIRED') where.subscriptionStatus = 'EXPIRED';
+
+    const companies = await this.prisma.company.findMany({
+      where,
+      select: { id: true, name: true, email: true },
+    });
+
+    const emails = companies.filter((c) => c.email).map((c) => c.email as string);
+
+    // Try sending via nodemailer if configured
+    let sent = 0;
+    if (process.env.SMTP_HOST && emails.length > 0) {
+      try {
+        const nodemailer = await import('nodemailer');
+        const transporter = nodemailer.createTransport({
+          host: process.env.SMTP_HOST,
+          port: Number(process.env.SMTP_PORT || 587),
+          auth: {
+            user: process.env.SMTP_USER,
+            pass: process.env.SMTP_PASS,
+          },
+        });
+
+        for (const email of emails) {
+          try {
+            await transporter.sendMail({
+              from: process.env.SMTP_FROM || 'noreply@karobar.pk',
+              to: email,
+              subject,
+              html: `<div style="font-family:Arial;direction:rtl;text-align:right;padding:20px;">
+                <h2 style="color:#6366f1;">${subject}</h2>
+                <p>${message}</p>
+                <hr style="border-color:#eee;"/>
+                <p style="color:#999;font-size:12px;">Karobar — آپ کا اکاؤنٹنگ پارٹنر</p>
+              </div>`,
+            });
+            sent++;
+          } catch { /* skip failed emails */ }
+        }
+      } catch { /* nodemailer not configured */ }
+    }
+
+    return {
+      targetCompanies: companies.length,
+      emailsFound: emails.length,
+      emailsSent: sent,
+      message: sent > 0 ? `${sent} ای میلز بھیجی گئیں` : 'SMTP کنفیگر نہیں — ای میل نہیں بھیجی گئی',
+    };
+  }
+
+  // ── #14. Trial Expiry Reminder (daily cron) ────────────────────────────
+  @Cron(CronExpression.EVERY_DAY_AT_9AM)
+  async sendTrialExpiryReminders() {
+    const sevenDaysFromNow = new Date();
+    sevenDaysFromNow.setDate(sevenDaysFromNow.getDate() + 7);
+
+    const expiringCompanies = await this.prisma.company.findMany({
+      where: {
+        plan: 'TRIAL',
+        subscriptionStatus: 'ACTIVE',
+        trialEndsAt: {
+          gte: new Date(),
+          lte: sevenDaysFromNow,
+        },
+      },
+      select: { id: true, name: true, email: true, trialEndsAt: true },
+    });
+
+    if (expiringCompanies.length === 0) return { reminders: 0 };
+
+    // Log reminders
+    for (const company of expiringCompanies) {
+      const daysLeft = Math.ceil(
+        ((company.trialEndsAt?.getTime() || 0) - Date.now()) / 86400000,
+      );
+      await this.logActivity({
+        action: 'TRIAL_REMINDER',
+        entityType: 'Company',
+        entityId: company.id,
+        description: `${company.name} کا ٹرائل ${daysLeft} دنوں میں ختم ہوگا`,
+      });
+    }
+
+    console.log(`[CRON] Sent ${expiringCompanies.length} trial expiry reminders`);
+    return { reminders: expiringCompanies.length };
+  }
+
+  // ── #15. Announcement Banner ───────────────────────────────────────────
+  async createAnnouncement(data: { title: string; message: string; type: string; expiresAt?: string }) {
+    return this.prisma.announcement.create({
+      data: {
+        title: data.title,
+        message: data.message,
+        type: data.type,
+        expiresAt: data.expiresAt ? new Date(data.expiresAt) : null,
+      },
+    });
+  }
+
+  async getAnnouncements() {
+    return this.prisma.announcement.findMany({
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async getActiveAnnouncements() {
+    return this.prisma.announcement.findMany({
+      where: {
+        isActive: true,
+        OR: [
+          { expiresAt: null },
+          { expiresAt: { gte: new Date() } },
+        ],
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async toggleAnnouncement(id: string) {
+    const ann = await this.prisma.announcement.findUnique({ where: { id } });
+    if (!ann) throw new Error('Announcement not found');
+    return this.prisma.announcement.update({
+      where: { id },
+      data: { isActive: !ann.isActive },
+    });
+  }
+
+  async deleteAnnouncement(id: string) {
+    return this.prisma.announcement.delete({ where: { id } });
+  }
 }

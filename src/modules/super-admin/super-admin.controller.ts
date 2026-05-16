@@ -145,4 +145,43 @@ export class SuperAdminController {
   deleteCoupon(@Param('id') id: string) {
     return this.service.deleteCoupon(id);
   }
+
+  // ── Phase 5 Endpoints (Communication) ─────────────────────────────────
+
+  @Post('broadcast-email')
+  broadcastEmail(@Body() body: { subject: string; message: string; filter?: string }) {
+    return this.service.broadcastEmail(body.subject, body.message, body.filter);
+  }
+
+  @Post('announcements')
+  createAnnouncement(@Body() body: any) {
+    return this.service.createAnnouncement(body);
+  }
+
+  @Get('announcements')
+  getAnnouncements() {
+    return this.service.getAnnouncements();
+  }
+
+  @Patch('announcements/:id/toggle')
+  toggleAnnouncement(@Param('id') id: string) {
+    return this.service.toggleAnnouncement(id);
+  }
+
+  @Delete('announcements/:id')
+  deleteAnnouncement(@Param('id') id: string) {
+    return this.service.deleteAnnouncement(id);
+  }
+}
+
+// Public endpoint for active announcements (no guard)
+import { Controller as C2 } from '@nestjs/common';
+@C2('announcements')
+export class AnnouncementsPublicController {
+  constructor(private readonly service: SuperAdminService) {}
+
+  @Get('active')
+  getActive() {
+    return this.service.getActiveAnnouncements();
+  }
 }
