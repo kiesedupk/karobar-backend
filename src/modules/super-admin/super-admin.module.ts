@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
-import { SuperAdminController } from './super-admin.controller';
+import { SuperAdminController, AnnouncementsPublicController } from './super-admin.controller';
 import { SuperAdminService } from './super-admin.service';
 import { SuperAdminGuard } from './super-admin.guard';
 import { PrismaService } from '../../prisma/prisma.service';
@@ -12,7 +12,7 @@ import { PrismaService } from '../../prisma/prisma.service';
       signOptions: { expiresIn: '15m' },
     }),
   ],
-  controllers: [SuperAdminController],
+  controllers: [SuperAdminController, AnnouncementsPublicController],
   providers: [SuperAdminService, SuperAdminGuard, PrismaService],
 })
 export class SuperAdminModule {}

@@ -864,3 +864,16 @@ model CouponCode {
 
   @@index([code])
 }
+
+// ── Announcements (Phase 5 - Communication) ───────────────────────────
+model Announcement {
+  id        String   @id @default(uuid())
+  title     String
+  message   String
+  type      String   @default("INFO") // INFO, WARNING, URGENT
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  expiresAt DateTime?
+
+  @@index([isActive])
+}
