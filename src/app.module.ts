@@ -35,6 +35,7 @@ import { InventoryModule } from './modules/inventory/inventory.module';
 import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjustments.module';
 import { StockTakeModule } from './modules/stock-take/stock-take.module';
 import { PosModule } from './modules/pos/pos.module';
+import { SuperAdminModule } from './modules/super-admin/super-admin.module';
 
 @Module({
   imports: [
@@ -74,6 +75,7 @@ import { PosModule } from './modules/pos/pos.module';
     StockAdjustmentsModule,
     StockTakeModule,
     PosModule,
+    SuperAdminModule,
   ],
   controllers: [AppController],
   providers: [AppService],

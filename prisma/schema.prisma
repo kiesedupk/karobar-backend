@@ -17,6 +17,14 @@ model Company {
   currency                  String                     @default("PKR")
   taxNumber                 String?
   defaultTaxRate            Decimal                    @default(0)
+  // Subscription & Trial Management
+  plan                      String                     @default("TRIAL") // TRIAL, BASIC, PRO, ENTERPRISE
+  subscriptionStatus        String                     @default("ACTIVE") // ACTIVE, SUSPENDED, EXPIRED
+  trialEndsAt               DateTime?
+  maxUsers                  Int                        @default(5)
+  maxProducts               Int                        @default(500)
+  suspendedReason           String?
+  adminNotes                String?
   createdAt                 DateTime                   @default(now())
   updatedAt                 DateTime                   @updatedAt
   accounts                  Account[]
@@ -161,15 +169,16 @@ model BankTransaction {
 }
 
 model User {
-  id        String        @id @default(uuid())
-  email     String        @unique
-  password  String
-  firstName String
-  lastName  String?
-  isActive  Boolean       @default(true)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
-  companies UserCompany[]
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String
+  firstName    String
+  lastName     String?
+  isActive     Boolean       @default(true)
+  isSuperAdmin Boolean       @default(false)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  companies    UserCompany[]
 }
 
 model Role {
