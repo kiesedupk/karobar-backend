@@ -1294,6 +1294,368 @@ export class ReportsService {
   }
 
   // ================================================================
+  // 16. EXPENSE BY CATEGORY
+  // ================================================================
+  async getExpenseByCategory(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { not: 'CANCELLED' } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.date = {};
+      if (dateFilter.startDate) where.date.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.date.lte = new Date(dateFilter.endDate);
+    }
+
+    const expenses = await this.prisma.expense.findMany({ where });
+    // Since we don't have direct include for Account, we need to fetch them
+    const accountIds = Array.from(new Set(expenses.map(e => e.expenseAccountId)));
+    const accounts = await this.prisma.account.findMany({
+      where: { id: { in: accountIds } },
+      select: { id: true, name: true, code: true }
+    });
+    const accMap = new Map(accounts.map(a => [a.id, a]));
+
+    const catMap = new Map<string, any>();
+    for (const exp of expenses) {
+      const acc = accMap.get(exp.expenseAccountId) || { name: 'Unknown Category', code: '---' };
+      const existing = catMap.get(exp.expenseAccountId) || {
+        categoryId: exp.expenseAccountId,
+        categoryName: acc.name,
+        categoryCode: acc.code,
+        expenseCount: 0,
+        totalAmount: 0,
+      };
+      existing.expenseCount++;
+      existing.totalAmount += Number(exp.amount);
+      catMap.set(exp.expenseAccountId, existing);
+    }
+
+    const categories = Array.from(catMap.values()).sort((a, b) => b.totalAmount - a.totalAmount);
+    const grandTotal = categories.reduce((s, c) => s + c.totalAmount, 0);
+
+    return {
+      reportName: 'Expense by Category',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      categories: categories.map(c => ({
+        ...c,
+        percentage: grandTotal > 0 ? ((c.totalAmount / grandTotal) * 100).toFixed(1) : '0',
+      })),
+      summary: { grandTotal: grandTotal.toFixed(2), categoryCount: categories.length },
+    };
+  }
+
+  // ================================================================
+  // 17. PURCHASE BY VENDOR
+  // ================================================================
+  async getPurchaseByVendor(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { not: 'CANCELLED' } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.billDate = {};
+      if (dateFilter.startDate) where.billDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.billDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const bills = await this.prisma.purchaseBill.findMany({
+      where,
+      include: { vendor: { select: { id: true, name: true } } },
+    });
+
+    const vendorMap = new Map<string, any>();
+    for (const bill of bills) {
+      const key = bill.vendorId || 'walk-in';
+      const existing = vendorMap.get(key) || {
+        vendorId: key,
+        vendorName: bill.vendor?.name || 'Walk-in Vendor',
+        billCount: 0,
+        totalPurchases: 0,
+        totalPaid: 0,
+        totalOutstanding: 0,
+      };
+      existing.billCount++;
+      existing.totalPurchases += Number(bill.totalAmount);
+      existing.totalPaid += Number(bill.paidAmount);
+      existing.totalOutstanding += Number(bill.totalAmount) - Number(bill.paidAmount);
+      vendorMap.set(key, existing);
+    }
+
+    const vendors = Array.from(vendorMap.values()).sort((a, b) => b.totalPurchases - a.totalPurchases);
+    const grandTotal = vendors.reduce((s, v) => s + v.totalPurchases, 0);
+
+    return {
+      reportName: 'Purchase by Vendor',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      vendors: vendors.map(v => ({
+        ...v,
+        percentage: grandTotal > 0 ? ((v.totalPurchases / grandTotal) * 100).toFixed(1) : '0',
+      })),
+      summary: { grandTotal: grandTotal.toFixed(2), vendorCount: vendors.length },
+    };
+  }
+
+  // ================================================================
+  // 18. PAYMENT COLLECTION REPORT
+  // ================================================================
+  async getPaymentCollection(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.paymentDate = {};
+      if (dateFilter.startDate) where.paymentDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.paymentDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const payments = await this.prisma.payment.findMany({
+      where,
+      orderBy: { paymentDate: 'desc' }
+    });
+
+    const methodMap = new Map<string, any>();
+    let totalAmount = 0;
+    
+    for (const payment of payments) {
+      const method = payment.method || 'CASH';
+      const existing = methodMap.get(method) || { method, count: 0, amount: 0 };
+      existing.count++;
+      existing.amount += Number(payment.amount);
+      totalAmount += Number(payment.amount);
+      methodMap.set(method, existing);
+    }
+
+    const methods = Array.from(methodMap.values()).sort((a, b) => b.amount - a.amount);
+
+    return {
+      reportName: 'Payment Collection Report',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      methods: methods.map(m => ({
+        ...m,
+        percentage: totalAmount > 0 ? ((m.amount / totalAmount) * 100).toFixed(1) : '0',
+      })),
+      summary: { totalAmount: totalAmount.toFixed(2), paymentCount: payments.length },
+    };
+  }
+
+  // ================================================================
+  // 19. STOCK VALUATION REPORT
+  // ================================================================
+  async getStockValuation(companyId: string) {
+    await this.validateCompany(companyId);
+    
+    const products = await this.prisma.product.findMany({
+      where: { companyId, trackInventory: true },
+      include: {
+        warehouseStocks: { select: { quantity: true, warehouseId: true } },
+      }
+    });
+
+    let totalValuation = 0;
+    let totalQty = 0;
+    
+    const valuationData = products.map(p => {
+      const stockQty = p.warehouseStocks.reduce((sum, ws) => sum + Number(ws.quantity), 0);
+      const cost = Number(p.costPrice || 0);
+      const val = stockQty * cost;
+      totalValuation += val;
+      totalQty += stockQty;
+      return {
+        productId: p.id,
+        productName: p.name,
+        sku: p.sku,
+        costPrice: cost.toFixed(2),
+        totalStock: stockQty,
+        valuation: val.toFixed(2),
+      };
+    }).sort((a, b) => Number(b.valuation) - Number(a.valuation));
+
+    return {
+      reportName: 'Stock Valuation Report',
+      generatedAt: new Date().toISOString(),
+      products: valuationData,
+      summary: {
+        totalValuation: totalValuation.toFixed(2),
+        totalItems: totalQty,
+        productCount: valuationData.length
+      }
+    };
+  }
+
+  // ================================================================
+  // 20. SLOW MOVING STOCK
+  // ================================================================
+  async getSlowMovingStock(companyId: string, daysThreshold: number = 90) {
+    await this.validateCompany(companyId);
+    
+    // Get all trackable products
+    const products = await this.prisma.product.findMany({
+      where: { companyId, trackInventory: true },
+      include: { warehouseStocks: { select: { quantity: true } } }
+    });
+
+    // Get last invoice item for each product
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - daysThreshold);
+
+    const slowProducts: any[] = [];
+    
+    for (const p of products) {
+      const stockQty = p.warehouseStocks.reduce((sum, ws) => sum + Number(ws.quantity), 0);
+      if (stockQty <= 0) continue; // Skip if no stock
+
+      // Check last sold date
+      const lastSold = await this.prisma.invoiceItem.findFirst({
+        where: { productId: p.id, invoice: { status: { not: 'CANCELLED' } } },
+        orderBy: { createdAt: 'desc' },
+        select: { createdAt: true }
+      });
+
+      let daysSinceSold = 999;
+      if (lastSold) {
+        daysSinceSold = Math.floor((new Date().getTime() - lastSold.createdAt.getTime()) / (1000 * 3600 * 24));
+      }
+
+      if (daysSinceSold >= daysThreshold || !lastSold) {
+        slowProducts.push({
+          productId: p.id,
+          productName: p.name,
+          sku: p.sku,
+          currentStock: stockQty,
+          lastSoldDate: lastSold ? lastSold.createdAt : null,
+          daysSinceSold: lastSold ? daysSinceSold : 'Never',
+          costValue: (stockQty * Number(p.costPrice || 0)).toFixed(2)
+        });
+      }
+    }
+
+    slowProducts.sort((a, b) => {
+      const aDays = a.daysSinceSold === 'Never' ? 9999 : a.daysSinceSold;
+      const bDays = b.daysSinceSold === 'Never' ? 9999 : b.daysSinceSold;
+      return bDays - aDays;
+    });
+
+    const totalTiedUp = slowProducts.reduce((sum, p) => sum + Number(p.costValue), 0);
+
+    return {
+      reportName: 'Slow Moving Stock Report',
+      thresholdDays: daysThreshold,
+      generatedAt: new Date().toISOString(),
+      products: slowProducts,
+      summary: {
+        productCount: slowProducts.length,
+        capitalTiedUp: totalTiedUp.toFixed(2)
+      }
+    };
+  }
+
+  // ================================================================
+  // 21. PEAK HOURS ANALYSIS
+  // ================================================================
+  async getPeakHoursAnalysis(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { not: 'CANCELLED' } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.issueDate = {};
+      if (dateFilter.startDate) where.issueDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.issueDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where,
+      select: { createdAt: true, totalAmount: true }
+    });
+
+    const hourMap = new Map<number, { count: number, revenue: number }>();
+    for (let i = 0; i < 24; i++) {
+      hourMap.set(i, { count: 0, revenue: 0 });
+    }
+
+    for (const inv of invoices) {
+      const h = inv.createdAt.getHours();
+      const existing = hourMap.get(h)!;
+      existing.count++;
+      existing.revenue += Number(inv.totalAmount);
+      hourMap.set(h, existing);
+    }
+
+    const hours = Array.from(hourMap.entries()).map(([hour, data]) => {
+      const ampm = hour >= 12 ? 'PM' : 'AM';
+      const h12 = hour % 12 || 12;
+      return {
+        hour,
+        label: `${h12}:00 ${ampm}`,
+        invoiceCount: data.count,
+        revenue: data.revenue.toFixed(2)
+      };
+    });
+
+    // Find peak
+    const sortedByRevenue = [...hours].sort((a, b) => Number(b.revenue) - Number(a.revenue));
+    const sortedByCount = [...hours].sort((a, b) => b.invoiceCount - a.invoiceCount);
+
+    return {
+      reportName: 'Peak Hours Analysis',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      hourlyData: hours,
+      summary: {
+        peakRevenueHour: sortedByRevenue[0]?.label,
+        peakVolumeHour: sortedByCount[0]?.label,
+        totalInvoices: invoices.length,
+        totalRevenue: invoices.reduce((s, i) => s + Number(i.totalAmount), 0).toFixed(2)
+      }
+    };
+  }
+
+  // ================================================================
+  // 22. PAYABLES AGING REPORT
+  // ================================================================
+  async getPayablesAging(companyId: string) {
+    await this.validateCompany(companyId);
+    const bills = await this.prisma.purchaseBill.findMany({
+      where: { companyId, status: { in: ['OPEN', 'PARTIAL'] } },
+      include: { vendor: { select: { id: true, name: true } } },
+    });
+
+    const now = new Date();
+    const aging = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
+    const details: any[] = [];
+
+    for (const bill of bills) {
+      const balance = Number(bill.totalAmount) - Number(bill.paidAmount);
+      if (balance <= 0) continue;
+      
+      const dueDate = new Date(bill.dueDate || bill.billDate || now);
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      
+      let bucket = 'current';
+      if (daysOverdue <= 0) { aging.current += balance; bucket = 'current'; }
+      else if (daysOverdue <= 30) { aging.days30 += balance; bucket = '1-30'; }
+      else if (daysOverdue <= 60) { aging.days60 += balance; bucket = '31-60'; }
+      else if (daysOverdue <= 90) { aging.days90 += balance; bucket = '61-90'; }
+      else { aging.over90 += balance; bucket = '90+'; }
+      aging.total += balance;
+
+      details.push({
+        billNumber: bill.billNumber,
+        vendorName: bill.vendor?.name || 'Walk-in Vendor',
+        dueDate: bill.dueDate,
+        totalAmount: Number(bill.totalAmount),
+        balance,
+        daysOverdue: Math.max(0, daysOverdue),
+        bucket,
+      });
+    }
+
+    return {
+      reportName: 'Payables Aging Report',
+      generatedAt: new Date().toISOString(),
+      aging,
+      details: details.sort((a, b) => b.daysOverdue - a.daysOverdue),
+    };
+  }
+
+  // ================================================================
   // PRIVATE HELPERS
   // ================================================================
   private async validateCompany(companyId: string) {

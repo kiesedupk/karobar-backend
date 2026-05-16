@@ -196,6 +196,68 @@ export class ReportsController {
   }
 
   @Permissions('report:read')
+  @Get('expense-by-category')
+  getExpenseByCategory(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getExpenseByCategory(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('purchase-by-vendor')
+  getPurchaseByVendor(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getPurchaseByVendor(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('payment-collection')
+  getPaymentCollection(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getPaymentCollection(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('stock-valuation')
+  getStockValuation(@Query('companyId') companyId: string) {
+    return this.reportsService.getStockValuation(companyId);
+  }
+
+  @Permissions('report:read')
+  @Get('slow-moving-stock')
+  getSlowMovingStock(
+    @Query('companyId') companyId: string,
+    @Query('daysThreshold') daysThreshold?: string,
+  ) {
+    const days = daysThreshold ? parseInt(daysThreshold, 10) : 90;
+    return this.reportsService.getSlowMovingStock(companyId, days);
+  }
+
+  @Permissions('report:read')
+  @Get('peak-hours')
+  getPeakHoursAnalysis(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getPeakHoursAnalysis(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('payables-aging')
+  getPayablesAging(@Query('companyId') companyId: string) {
+    return this.reportsService.getPayablesAging(companyId);
+  }
+
+  @Permissions('report:read')
   @Get('sales-summary')
   getSalesSummary(
     @Query('companyId') companyId: string,
