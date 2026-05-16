@@ -148,6 +148,50 @@ export class PosService {
     if (!session || session.companyId !== companyId) throw new NotFoundException('Session not found');
     if (session.status !== 'OPEN') throw new BadRequestException('Session is closed');
 
+    // -------------------------------------------------------
+    // PRE-TRANSACTION: Resolve all accounts BEFORE the transaction
+    // to avoid slow queries inside transaction causing P2028 timeout
+    // -------------------------------------------------------
+    const requiredCodes = ['1010', '1020', '1100', '1200', '2200', '4010', '5010'];
+    const existingAccounts = await this.prisma.account.findMany({
+      where: { companyId, code: { in: requiredCodes } }
+    });
+
+    const accountMap: Record<string, string> = {};
+    for (const acct of existingAccounts) {
+      accountMap[acct.code] = acct.id;
+    }
+
+    // Auto-create any missing accounts before entering the transaction
+    const accountDefs = [
+      { code: '1010', name: 'Cash on Hand', type: 'ASSET', subType: 'CASH' },
+      { code: '1020', name: 'Bank Accounts', type: 'ASSET', subType: 'BANK' },
+      { code: '1100', name: 'Accounts Receivable', type: 'ASSET', subType: 'RECEIVABLE' },
+      { code: '1200', name: 'Inventory', type: 'ASSET', subType: 'INVENTORY' },
+      { code: '2200', name: 'GST / Sales Tax Payable', type: 'LIABILITY', subType: 'TAX' },
+      { code: '4010', name: 'Sales Revenue', type: 'REVENUE', subType: 'SALES' },
+      { code: '5010', name: 'Cost of Goods Sold', type: 'EXPENSE', subType: 'COGS' },
+    ];
+
+    for (const def of accountDefs) {
+      if (!accountMap[def.code]) {
+        const created = await this.prisma.account.upsert({
+          where: { companyId_code: { companyId, code: def.code } },
+          update: {},
+          create: { companyId, code: def.code, name: def.name, type: def.type as any, subType: def.subType, isActive: true }
+        });
+        accountMap[def.code] = created.id;
+      }
+    }
+
+    const cashAccountId = accountMap['1010'];
+    const bankAccountId = accountMap['1020'];
+    const arAccountId = accountMap['1100'];
+    const inventoryAccountId = accountMap['1200'];
+    const taxAccountId = accountMap['2200'];
+    const salesAccountId = accountMap['4010'];
+    const cogsAccountId = accountMap['5010'];
+
     return this.prisma.$transaction(async (tx) => {
       // 1. Generate Invoice Number
       const lastInvoice = await tx.invoice.findFirst({
@@ -162,49 +206,6 @@ export class PosService {
       let totalTax = 0;
       let totalDiscount = 0;
       let totalCogs = 0;
-
-      // 2a. Discover Default Accounts for Journal Entries
-      const requiredCodes = ['1010', '1020', '1100', '1200', '2200', '4010', '5010'];
-      const accounts = await tx.account.findMany({
-        where: {
-          companyId,
-          code: { in: requiredCodes }
-        }
-      });
-      
-      const getAcctId = async (code: string) => {
-        const acct = accounts.find(a => a.code === code);
-        if (acct) return acct.id;
-        
-        // Auto-create missing account robustly
-        let name = '';
-        let type = '';
-        let subType = '';
-        
-        switch(code) {
-          case '1010': name = 'Cash on Hand'; type = 'ASSET'; subType = 'CASH'; break;
-          case '1020': name = 'Bank Accounts'; type = 'ASSET'; subType = 'BANK'; break;
-          case '1100': name = 'Accounts Receivable'; type = 'ASSET'; subType = 'RECEIVABLE'; break;
-          case '1200': name = 'Inventory'; type = 'ASSET'; subType = 'INVENTORY'; break;
-          case '2200': name = 'GST / Sales Tax Payable'; type = 'LIABILITY'; subType = 'TAX'; break;
-          case '4010': name = 'Sales Revenue'; type = 'REVENUE'; subType = 'SALES'; break;
-          case '5010': name = 'Cost of Goods Sold'; type = 'EXPENSE'; subType = 'COGS'; break;
-        }
-        
-        const newAcct = await tx.account.create({
-          data: { companyId, code, name, type: type as any, subType, isActive: true }
-        });
-        accounts.push(newAcct); // cache it
-        return newAcct.id;
-      };
-
-      const cashAccountId = await getAcctId('1010');
-      const bankAccountId = await getAcctId('1020'); // Card/Bank payments map here
-      const arAccountId = await getAcctId('1100');
-      const inventoryAccountId = await getAcctId('1200');
-      const taxAccountId = await getAcctId('2200');
-      const salesAccountId = await getAcctId('4010');
-      const cogsAccountId = await getAcctId('5010');
 
       const itemsWithDetails = await Promise.all(dto.items.map(async (item) => {
         const product = await tx.product.findUnique({ where: { id: item.productId } });
