@@ -2,7 +2,7 @@ import { IsString, IsNumber, IsOptional, IsArray, ValidateNested, IsUUID, Min } 
 import { Type } from 'class-transformer';
 
 export class CreatePosSessionDto {
-  @IsUUID()
+  @IsString()
   warehouseId: string;
 
   @IsNumber()
@@ -15,7 +15,7 @@ export class CreatePosSessionDto {
 }
 
 export class PosItemDto {
-  @IsUUID()
+  @IsString()
   productId: string;
 
   @IsNumber()
@@ -42,11 +42,11 @@ export class PosPaymentSplitDto {
 }
 
 export class PosCheckoutDto {
-  @IsUUID()
+  @IsString()
   sessionId: string;
 
   @IsOptional()
-  @IsUUID()
+  @IsString()
   customerId?: string;
 
   @IsArray()
