@@ -128,4 +128,80 @@ export class ReportsController {
       endDate,
     });
   }
+
+  @Permissions('report:read')
+  @Get('sales-by-customer')
+  getSalesByCustomer(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getSalesByCustomer(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('sales-by-product')
+  getSalesByProduct(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getSalesByProduct(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('daily-profit')
+  getDailyProfit(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getDailyProfit(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('profit-by-product')
+  getProfitByProduct(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getProfitByProduct(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('profit-by-customer')
+  getProfitByCustomer(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getProfitByCustomer(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('top-products')
+  getTopProducts(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getTopProducts(companyId, { startDate, endDate });
+  }
+
+  @Permissions('report:read')
+  @Get('aging')
+  getAgingReport(@Query('companyId') companyId: string) {
+    return this.reportsService.getAgingReport(companyId);
+  }
+
+  @Permissions('report:read')
+  @Get('sales-summary')
+  getSalesSummary(
+    @Query('companyId') companyId: string,
+    @Query('startDate') startDate?: string,
+    @Query('endDate') endDate?: string,
+  ) {
+    return this.reportsService.getSalesSummary(companyId, { startDate, endDate });
+  }
 }

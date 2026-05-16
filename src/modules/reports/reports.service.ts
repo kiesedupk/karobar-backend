@@ -954,6 +954,346 @@ export class ReportsService {
   }
 
   // ================================================================
+  // 8. SALES BY CUSTOMER
+  // ================================================================
+  async getSalesByCustomer(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { not: 'CANCELLED' } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.issueDate = {};
+      if (dateFilter.startDate) where.issueDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.issueDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where,
+      include: { customer: { select: { id: true, name: true, email: true, phone: true } } },
+    });
+
+    const customerMap = new Map<string, any>();
+    for (const inv of invoices) {
+      const key = inv.customerId || 'walk-in';
+      const existing = customerMap.get(key) || {
+        customerId: key,
+        customerName: inv.customer?.name || 'Walk-in Customer',
+        email: inv.customer?.email || '',
+        invoiceCount: 0,
+        totalSales: 0,
+        totalPaid: 0,
+        totalOutstanding: 0,
+      };
+      existing.invoiceCount++;
+      existing.totalSales += Number(inv.totalAmount);
+      existing.totalPaid += Number(inv.paidAmount);
+      existing.totalOutstanding += Number(inv.totalAmount) - Number(inv.paidAmount);
+      customerMap.set(key, existing);
+    }
+
+    const customers = Array.from(customerMap.values()).sort((a, b) => b.totalSales - a.totalSales);
+    const grandTotal = customers.reduce((s, c) => s + c.totalSales, 0);
+
+    return {
+      reportName: 'Sales by Customer',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      customers: customers.map(c => ({ ...c, percentage: grandTotal > 0 ? ((c.totalSales / grandTotal) * 100).toFixed(1) : '0' })),
+      summary: { grandTotal: grandTotal.toFixed(2), customerCount: customers.length },
+    };
+  }
+
+  // ================================================================
+  // 9. SALES BY PRODUCT
+  // ================================================================
+  async getSalesByProduct(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { invoice: { companyId, status: { not: 'CANCELLED' } } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.invoice.issueDate = {};
+      if (dateFilter.startDate) where.invoice.issueDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.invoice.issueDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const items = await this.prisma.invoiceItem.findMany({
+      where,
+      include: {
+        product: { select: { id: true, name: true, sku: true, costPrice: true } },
+        invoice: { select: { issueDate: true } },
+      },
+    });
+
+    const productMap = new Map<string, any>();
+    for (const item of items) {
+      const key = item.productId || item.description;
+      const existing = productMap.get(key) || {
+        productId: item.productId,
+        productName: item.product?.name || item.description,
+        sku: item.product?.sku || '',
+        totalQty: 0,
+        totalRevenue: 0,
+        totalCost: 0,
+        totalProfit: 0,
+        invoiceCount: 0,
+      };
+      const qty = Number(item.quantity);
+      const revenue = Number(item.totalAmount);
+      const costPrice = Number(item.product?.costPrice || 0);
+      existing.totalQty += qty;
+      existing.totalRevenue += revenue;
+      existing.totalCost += costPrice * qty;
+      existing.totalProfit += revenue - (costPrice * qty);
+      existing.invoiceCount++;
+      productMap.set(key, existing);
+    }
+
+    const products = Array.from(productMap.values()).sort((a, b) => b.totalRevenue - a.totalRevenue);
+    const grandTotal = products.reduce((s, p) => s + p.totalRevenue, 0);
+
+    return {
+      reportName: 'Sales by Product',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      products: products.map(p => ({
+        ...p,
+        profitMargin: p.totalRevenue > 0 ? ((p.totalProfit / p.totalRevenue) * 100).toFixed(1) : '0',
+        percentage: grandTotal > 0 ? ((p.totalRevenue / grandTotal) * 100).toFixed(1) : '0',
+      })),
+      summary: { grandTotal: grandTotal.toFixed(2), productCount: products.length },
+    };
+  }
+
+  // ================================================================
+  // 10. DAILY PROFIT REPORT
+  // ================================================================
+  async getDailyProfit(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { in: ['PAID', 'PARTIAL', 'SENT'] } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.issueDate = {};
+      if (dateFilter.startDate) where.issueDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.issueDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where,
+      include: { items: { include: { product: { select: { costPrice: true } } } } },
+      orderBy: { issueDate: 'asc' },
+    });
+
+    const dailyMap = new Map<string, any>();
+    for (const inv of invoices) {
+      const day = new Date(inv.issueDate).toISOString().split('T')[0];
+      const existing = dailyMap.get(day) || { date: day, revenue: 0, cost: 0, profit: 0, invoiceCount: 0 };
+      let dayCost = 0;
+      for (const item of inv.items) {
+        dayCost += Number(item.product?.costPrice || 0) * Number(item.quantity);
+      }
+      existing.revenue += Number(inv.totalAmount);
+      existing.cost += dayCost;
+      existing.profit += Number(inv.totalAmount) - dayCost;
+      existing.invoiceCount++;
+      dailyMap.set(day, existing);
+    }
+
+    const days = Array.from(dailyMap.values());
+    const totalRevenue = days.reduce((s, d) => s + d.revenue, 0);
+    const totalCost = days.reduce((s, d) => s + d.cost, 0);
+    const totalProfit = days.reduce((s, d) => s + d.profit, 0);
+
+    return {
+      reportName: 'Daily Profit Report',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      days,
+      summary: {
+        totalRevenue: totalRevenue.toFixed(2),
+        totalCost: totalCost.toFixed(2),
+        totalProfit: totalProfit.toFixed(2),
+        avgDailyProfit: days.length > 0 ? (totalProfit / days.length).toFixed(2) : '0',
+        profitMargin: totalRevenue > 0 ? ((totalProfit / totalRevenue) * 100).toFixed(1) : '0',
+        dayCount: days.length,
+      },
+    };
+  }
+
+  // ================================================================
+  // 11. PROFIT BY PRODUCT
+  // ================================================================
+  async getProfitByProduct(companyId: string, dateFilter?: DateFilter) {
+    const salesData = await this.getSalesByProduct(companyId, dateFilter);
+    const products = salesData.products.sort((a: any, b: any) => b.totalProfit - a.totalProfit);
+    const totalProfit = products.reduce((s: number, p: any) => s + p.totalProfit, 0);
+
+    return {
+      reportName: 'Profit by Product',
+      dateRange: salesData.dateRange,
+      generatedAt: new Date().toISOString(),
+      products: products.map((p: any) => ({
+        ...p,
+        profitShare: totalProfit > 0 ? ((p.totalProfit / totalProfit) * 100).toFixed(1) : '0',
+      })),
+      summary: { totalProfit: totalProfit.toFixed(2), productCount: products.length },
+    };
+  }
+
+  // ================================================================
+  // 12. PROFIT BY CUSTOMER
+  // ================================================================
+  async getProfitByCustomer(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { not: 'CANCELLED' } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.issueDate = {};
+      if (dateFilter.startDate) where.issueDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.issueDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const invoices = await this.prisma.invoice.findMany({
+      where,
+      include: {
+        customer: { select: { id: true, name: true } },
+        items: { include: { product: { select: { costPrice: true } } } },
+      },
+    });
+
+    const custMap = new Map<string, any>();
+    for (const inv of invoices) {
+      const key = inv.customerId || 'walk-in';
+      const existing = custMap.get(key) || {
+        customerId: key, customerName: inv.customer?.name || 'Walk-in',
+        revenue: 0, cost: 0, profit: 0, invoiceCount: 0,
+      };
+      let invCost = 0;
+      for (const item of inv.items) {
+        invCost += Number(item.product?.costPrice || 0) * Number(item.quantity);
+      }
+      existing.revenue += Number(inv.totalAmount);
+      existing.cost += invCost;
+      existing.profit += Number(inv.totalAmount) - invCost;
+      existing.invoiceCount++;
+      custMap.set(key, existing);
+    }
+
+    const customers = Array.from(custMap.values()).sort((a, b) => b.profit - a.profit);
+    const totalProfit = customers.reduce((s, c) => s + c.profit, 0);
+
+    return {
+      reportName: 'Profit by Customer',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      customers: customers.map(c => ({
+        ...c,
+        profitMargin: c.revenue > 0 ? ((c.profit / c.revenue) * 100).toFixed(1) : '0',
+      })),
+      summary: { totalProfit: totalProfit.toFixed(2), customerCount: customers.length },
+    };
+  }
+
+  // ================================================================
+  // 13. TOP PRODUCTS REPORT
+  // ================================================================
+  async getTopProducts(companyId: string, dateFilter?: DateFilter, limit = 20) {
+    const salesData = await this.getSalesByProduct(companyId, dateFilter);
+    return {
+      reportName: 'Top Products',
+      dateRange: salesData.dateRange,
+      generatedAt: new Date().toISOString(),
+      products: salesData.products.slice(0, limit),
+      summary: salesData.summary,
+    };
+  }
+
+  // ================================================================
+  // 14. RECEIVABLES AGING REPORT
+  // ================================================================
+  async getAgingReport(companyId: string) {
+    await this.validateCompany(companyId);
+    const invoices = await this.prisma.invoice.findMany({
+      where: { companyId, status: { in: ['SENT', 'PARTIAL', 'OVERDUE'] } },
+      include: { customer: { select: { id: true, name: true } } },
+    });
+
+    const now = new Date();
+    const aging = { current: 0, days30: 0, days60: 0, days90: 0, over90: 0, total: 0 };
+    const details: any[] = [];
+
+    for (const inv of invoices) {
+      const balance = Number(inv.totalAmount) - Number(inv.paidAmount);
+      if (balance <= 0) continue;
+      const dueDate = new Date(inv.dueDate);
+      const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
+      let bucket = 'current';
+      if (daysOverdue <= 0) { aging.current += balance; bucket = 'current'; }
+      else if (daysOverdue <= 30) { aging.days30 += balance; bucket = '1-30'; }
+      else if (daysOverdue <= 60) { aging.days60 += balance; bucket = '31-60'; }
+      else if (daysOverdue <= 90) { aging.days90 += balance; bucket = '61-90'; }
+      else { aging.over90 += balance; bucket = '90+'; }
+      aging.total += balance;
+
+      details.push({
+        invoiceNumber: inv.invoiceNumber,
+        customerName: inv.customer?.name || 'Walk-in',
+        dueDate: inv.dueDate,
+        totalAmount: Number(inv.totalAmount),
+        balance,
+        daysOverdue: Math.max(0, daysOverdue),
+        bucket,
+      });
+    }
+
+    return {
+      reportName: 'Receivables Aging Report',
+      generatedAt: new Date().toISOString(),
+      aging,
+      details: details.sort((a, b) => b.daysOverdue - a.daysOverdue),
+    };
+  }
+
+  // ================================================================
+  // 15. SALES SUMMARY (Monthly/Weekly)
+  // ================================================================
+  async getSalesSummary(companyId: string, dateFilter?: DateFilter) {
+    await this.validateCompany(companyId);
+    const where: any = { companyId, status: { not: 'CANCELLED' } };
+    if (dateFilter?.startDate || dateFilter?.endDate) {
+      where.issueDate = {};
+      if (dateFilter.startDate) where.issueDate.gte = new Date(dateFilter.startDate);
+      if (dateFilter.endDate) where.issueDate.lte = new Date(dateFilter.endDate);
+    }
+
+    const invoices = await this.prisma.invoice.findMany({ where, orderBy: { issueDate: 'asc' } });
+
+    const monthlyMap = new Map<string, any>();
+    let totalSales = 0, totalPaid = 0, totalInvoices = 0;
+
+    for (const inv of invoices) {
+      const d = new Date(inv.issueDate);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      const existing = monthlyMap.get(key) || { month: key, sales: 0, paid: 0, invoiceCount: 0 };
+      existing.sales += Number(inv.totalAmount);
+      existing.paid += Number(inv.paidAmount);
+      existing.invoiceCount++;
+      monthlyMap.set(key, existing);
+      totalSales += Number(inv.totalAmount);
+      totalPaid += Number(inv.paidAmount);
+      totalInvoices++;
+    }
+
+    return {
+      reportName: 'Sales Summary',
+      dateRange: { from: dateFilter?.startDate || 'All Time', to: dateFilter?.endDate || 'Present' },
+      generatedAt: new Date().toISOString(),
+      monthly: Array.from(monthlyMap.values()),
+      summary: {
+        totalSales: totalSales.toFixed(2),
+        totalPaid: totalPaid.toFixed(2),
+        totalOutstanding: (totalSales - totalPaid).toFixed(2),
+        totalInvoices,
+        avgInvoiceValue: totalInvoices > 0 ? (totalSales / totalInvoices).toFixed(2) : '0',
+      },
+    };
+  }
+
+  // ================================================================
   // PRIVATE HELPERS
   // ================================================================
   private async validateCompany(companyId: string) {
