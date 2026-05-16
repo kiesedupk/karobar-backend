@@ -51,6 +51,41 @@ export class AuthService {
       }),
     ]);
 
+    // Enrich companies with subscription status warnings
+    const companiesWithStatus = user.companies.map((c) => {
+      const company = c.company as any;
+      let subscriptionWarning: string | null = null;
+
+      if (company.subscriptionStatus === 'SUSPENDED') {
+        subscriptionWarning =
+          company.suspendedReason ||
+          'آپ کا اکاؤنٹ معطل ہے۔ براہ کرم ہم سے رابطہ کریں یا پیڈ پلان حاصل کریں۔';
+      } else if (company.subscriptionStatus === 'EXPIRED') {
+        subscriptionWarning =
+          'آپ کا ٹرائل ختم ہو گیا ہے۔ سروس جاری رکھنے کے لیے پیڈ پلان خریدیں۔';
+      } else if (company.plan === 'TRIAL' && company.trialEndsAt) {
+        const daysLeft = Math.ceil(
+          (new Date(company.trialEndsAt).getTime() - Date.now()) / 86400000,
+        );
+        if (daysLeft <= 7 && daysLeft > 0) {
+          subscriptionWarning = `آپ کا ٹرائل ${daysLeft} دنوں میں ختم ہو جائے گا۔`;
+        } else if (daysLeft <= 0) {
+          subscriptionWarning = 'آپ کا ٹرائل ختم ہو گیا ہے۔ پیڈ پلان خریدیں۔';
+        }
+      }
+
+      return {
+        companyId: company.id,
+        companyName: company.name,
+        role: c.role.name,
+        permissions: c.role.permissions ? c.role.permissions.split(',') : [],
+        plan: company.plan,
+        subscriptionStatus: company.subscriptionStatus,
+        trialEndsAt: company.trialEndsAt,
+        subscriptionWarning,
+      };
+    });
+
     return {
       message: 'Login successful',
       user: {
@@ -58,12 +93,8 @@ export class AuthService {
         email: user.email,
         firstName: user.firstName,
         lastName: user.lastName,
-        companies: user.companies.map((c) => ({
-          companyId: c.company.id,
-          companyName: c.company.name,
-          role: c.role.name,
-          permissions: c.role.permissions ? c.role.permissions.split(',') : [],
-        })),
+        isSuperAdmin: (user as any).isSuperAdmin ?? false,
+        companies: companiesWithStatus,
       },
       tokens: {
         accessToken,
@@ -71,6 +102,7 @@ export class AuthService {
       },
     };
   }
+
 
   async refreshToken(userId: string, email: string) {
     const payload = { sub: userId, email };

@@ -67,9 +67,12 @@ export class CompaniesService {
     }
 
     return this.prisma.$transaction(async (tx) => {
-      // 1. Create the company
+      // 1. Create the company with 30-day trial
+      const trialEndsAt = new Date();
+      trialEndsAt.setDate(trialEndsAt.getDate() + 30);
+
       const company = await tx.company.create({
-        data: { name, email, phone, address, currency: currency || 'PKR' },
+        data: { name, email, phone, address, currency: currency || 'PKR', plan: 'TRIAL', subscriptionStatus: 'ACTIVE', trialEndsAt },
       });
 
       // 2. Create default roles for this company
