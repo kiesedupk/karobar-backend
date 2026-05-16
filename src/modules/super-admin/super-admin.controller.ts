@@ -78,5 +78,34 @@ export class SuperAdminController {
   manualExpireTrials() {
     return this.service.expireTrials();
   }
-}
 
+  // ── Phase 3 Endpoints ─────────────────────────────────────────────────
+
+  @Get('activity-logs')
+  getActivityLogs(
+    @Query('action') action?: string,
+    @Query('page') page?: string,
+    @Query('limit') limit?: string,
+  ) {
+    return this.service.getActivityLogs({
+      action,
+      page: page ? parseInt(page) : 1,
+      limit: limit ? parseInt(limit) : 50,
+    });
+  }
+
+  @Get('revenue')
+  getRevenueDashboard() {
+    return this.service.getRevenueDashboard();
+  }
+
+  @Get('usage')
+  getUsageStats() {
+    return this.service.getUsageStats();
+  }
+
+  @Get('health')
+  getSystemHealth() {
+    return this.service.getSystemHealth();
+  }
+}
