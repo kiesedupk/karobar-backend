@@ -174,6 +174,19 @@ export class AuthService {
       };
     });
 
+    // Log this login
+    try {
+      await this.prisma.activityLog.create({
+        data: {
+          action: 'LOGIN',
+          entityType: 'User',
+          entityId: user.id,
+          description: `${user.firstName} ${user.lastName || ''} (${user.email}) لاگن ہوا`,
+          performedBy: user.id,
+        },
+      });
+    } catch { /* don't block login if logging fails */ }
+
     return {
       message: 'Login successful',
       user: {

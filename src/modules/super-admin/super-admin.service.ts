@@ -294,5 +294,185 @@ export class SuperAdminService {
       orderBy: { createdAt: 'desc' },
     });
   }
-}
 
+  // ══════════════════════════════════════════════════════════════════════
+  // PHASE 3 — MONITORING & ANALYTICS
+  // ══════════════════════════════════════════════════════════════════════
+
+  // ── #6. Activity Log ──────────────────────────────────────────────────
+  async logActivity(data: {
+    action: string;
+    entityType?: string;
+    entityId?: string;
+    description: string;
+    performedBy?: string;
+    ipAddress?: string;
+    userAgent?: string;
+  }) {
+    return this.prisma.activityLog.create({ data });
+  }
+
+  async getActivityLogs(filters?: { action?: string; page?: number; limit?: number }) {
+    const page = filters?.page || 1;
+    const limit = filters?.limit || 50;
+    const where: any = {};
+    if (filters?.action) where.action = filters.action;
+
+    const [logs, total] = await Promise.all([
+      this.prisma.activityLog.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        skip: (page - 1) * limit,
+        take: limit,
+        include: {
+          user: { select: { id: true, email: true, firstName: true, lastName: true } },
+        },
+      }),
+      this.prisma.activityLog.count({ where }),
+    ]);
+
+    return { logs, total, page, limit, pages: Math.ceil(total / limit) };
+  }
+
+  // ── #7. Revenue / Growth Dashboard ─────────────────────────────────────
+  async getRevenueDashboard() {
+    // Plan distribution
+    const planDistribution = await this.prisma.company.groupBy({
+      by: ['plan'],
+      _count: { id: true },
+    });
+
+    // Status distribution
+    const statusDistribution = await this.prisma.company.groupBy({
+      by: ['subscriptionStatus'],
+      _count: { id: true },
+    });
+
+    // Monthly growth (last 12 months)
+    const twelveMonthsAgo = new Date();
+    twelveMonthsAgo.setMonth(twelveMonthsAgo.getMonth() - 12);
+
+    const companies = await this.prisma.company.findMany({
+      where: { createdAt: { gte: twelveMonthsAgo } },
+      select: { createdAt: true },
+      orderBy: { createdAt: 'asc' },
+    });
+
+    const monthlyGrowth: Record<string, number> = {};
+    companies.forEach((c) => {
+      const key = `${c.createdAt.getFullYear()}-${String(c.createdAt.getMonth() + 1).padStart(2, '0')}`;
+      monthlyGrowth[key] = (monthlyGrowth[key] || 0) + 1;
+    });
+
+    // Total counts
+    const totalCompanies = await this.prisma.company.count();
+    const totalUsers = await this.prisma.user.count({ where: { isSuperAdmin: false } });
+    const totalInvoices = await this.prisma.invoice.count();
+
+    return {
+      planDistribution: planDistribution.map((p) => ({ plan: p.plan, count: p._count.id })),
+      statusDistribution: statusDistribution.map((s) => ({ status: s.subscriptionStatus, count: s._count.id })),
+      monthlyGrowth: Object.entries(monthlyGrowth).map(([month, count]) => ({ month, count })),
+      totals: { companies: totalCompanies, users: totalUsers, invoices: totalInvoices },
+    };
+  }
+
+  // ── #8. Usage Stats ───────────────────────────────────────────────────
+  async getUsageStats() {
+    const companies = await this.prisma.company.findMany({
+      select: {
+        id: true,
+        name: true,
+        plan: true,
+        subscriptionStatus: true,
+        _count: {
+          select: {
+            products: true,
+            invoices: true,
+            accounts: true,
+            posSessions: true,
+            users: true,
+            journalEntries: true,
+            customers: true,
+            vendors: true,
+          },
+        },
+      },
+      orderBy: { createdAt: 'desc' },
+    });
+
+    // System-wide totals
+    const [totalProducts, totalInvoices, totalAccounts, totalJournals] = await Promise.all([
+      this.prisma.product.count(),
+      this.prisma.invoice.count(),
+      this.prisma.account.count(),
+      this.prisma.journalEntry.count(),
+    ]);
+
+    return {
+      companies: companies.map((c) => ({
+        id: c.id,
+        name: c.name,
+        plan: c.plan,
+        status: c.subscriptionStatus,
+        usage: {
+          products: c._count.products,
+          invoices: c._count.invoices,
+          accounts: c._count.accounts,
+          sessions: c._count.posSessions,
+          users: c._count.users,
+          journals: c._count.journalEntries,
+          customers: c._count.customers,
+          vendors: c._count.vendors,
+        },
+      })),
+      systemTotals: {
+        products: totalProducts,
+        invoices: totalInvoices,
+        accounts: totalAccounts,
+        journals: totalJournals,
+      },
+    };
+  }
+
+  // ── #9. System Health ──────────────────────────────────────────────────
+  async getSystemHealth() {
+    const startTime = Date.now();
+
+    // DB check
+    let dbStatus = 'healthy';
+    try {
+      await this.prisma.$queryRaw`SELECT 1`;
+    } catch {
+      dbStatus = 'unhealthy';
+    }
+    const dbResponseMs = Date.now() - startTime;
+
+    // Counts
+    const [companies, users, invoices, logs] = await Promise.all([
+      this.prisma.company.count(),
+      this.prisma.user.count(),
+      this.prisma.invoice.count(),
+      this.prisma.activityLog.count(),
+    ]);
+
+    // Recent errors (from activity log)
+    const recentErrors = await this.prisma.activityLog.count({
+      where: {
+        action: { in: ['ERROR', 'FAILED_LOGIN'] },
+        createdAt: { gte: new Date(Date.now() - 24 * 60 * 60 * 1000) },
+      },
+    });
+
+    return {
+      status: dbStatus === 'healthy' ? 'operational' : 'degraded',
+      database: { status: dbStatus, responseMs: dbResponseMs },
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
+      nodeVersion: process.version,
+      counts: { companies, users, invoices, activityLogs: logs },
+      errorsLast24h: recentErrors,
+      timestamp: new Date().toISOString(),
+    };
+  }
+}

@@ -179,6 +179,7 @@ model User {
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
   companies    UserCompany[]
+  activityLogs ActivityLog[]
 }
 
 model Role {
@@ -806,4 +807,22 @@ model StockTakeItem {
 
   @@index([stockTakeId])
   @@index([productId])
+}
+
+// ── Activity Log (Super Admin Monitoring) ──────────────────────────────
+model ActivityLog {
+  id          String   @id @default(uuid())
+  action      String   // LOGIN, LOGOUT, COMPANY_DELETE, TRIAL_EXTEND, USER_BLOCK, PASSWORD_RESET, IMPERSONATE, PLAN_CHANGE, SUSPEND, ACTIVATE
+  entityType  String?  // Company, User, etc.
+  entityId    String?
+  description String
+  ipAddress   String?
+  userAgent   String?
+  performedBy String?
+  user        User?    @relation(fields: [performedBy], references: [id])
+  createdAt   DateTime @default(now())
+
+  @@index([action])
+  @@index([performedBy])
+  @@index([createdAt])
 }
