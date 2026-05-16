@@ -1219,7 +1219,7 @@ export class ReportsService {
     for (const inv of invoices) {
       const balance = Number(inv.totalAmount) - Number(inv.paidAmount);
       if (balance <= 0) continue;
-      const dueDate = new Date(inv.dueDate);
+      const dueDate = new Date(inv.dueDate || inv.issueDate || now);
       const daysOverdue = Math.floor((now.getTime() - dueDate.getTime()) / (1000 * 60 * 60 * 24));
       let bucket = 'current';
       if (daysOverdue <= 0) { aging.current += balance; bucket = 'current'; }
