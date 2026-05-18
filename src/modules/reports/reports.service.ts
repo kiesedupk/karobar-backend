@@ -1656,6 +1656,113 @@ export class ReportsService {
   }
 
   // ================================================================
+  // DASHBOARD SUMMARY
+  // ================================================================
+  async getDashboardSummary(companyId: string) {
+    await this.validateCompany(companyId);
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const endOfMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+
+    // 1. Total Revenue (Invoices issues this month)
+    const revenueAgg = await this.prisma.invoice.aggregate({
+      where: { companyId, issueDate: { gte: startOfMonth, lte: endOfMonth }, status: { not: 'CANCELLED' } },
+      _sum: { totalAmount: true },
+    });
+    const totalRevenue = revenueAgg._sum.totalAmount || 0;
+
+    // 2. Total Expenses (Expenses recorded this month)
+    const expenseAgg = await this.prisma.expense.aggregate({
+      where: { companyId, date: { gte: startOfMonth, lte: endOfMonth } },
+      _sum: { amount: true },
+    });
+    const totalExpenses = expenseAgg._sum.amount || 0;
+
+    // 3. Unpaid Invoices Count (Pending + Overdue)
+    const unpaidInvoicesCount = await this.prisma.invoice.count({
+      where: { companyId, status: { in: ['SENT', 'OVERDUE', 'PARTIAL'] } },
+    });
+
+    // 4. Active Customers Count
+    const activeCustomersCount = await this.prisma.customer.count({
+      where: { companyId },
+    });
+
+    // 5. Recent Transactions / Invoices
+    const recentInvoices = await this.prisma.invoice.findMany({
+      where: { companyId },
+      orderBy: { issueDate: 'desc' },
+      take: 5,
+      include: { customer: { select: { name: true } } },
+    });
+
+    const recentInvoicesFormatted = recentInvoices.map((inv) => ({
+      id: inv.id,
+      number: inv.invoiceNumber,
+      date: inv.issueDate,
+      customer: inv.customer?.name || 'Walk-in',
+      amount: new Decimal(inv.totalAmount).toFixed(2),
+      status: inv.status,
+    }));
+
+    // 6. Expense Breakdown (Current Month)
+    const expenses = await this.prisma.expense.findMany({
+      where: { companyId, date: { gte: startOfMonth, lte: endOfMonth } },
+      include: { company: { select: { id: true } } }, // dummy include just to get raw, or we can use raw query
+    });
+    
+    // We need category. In Expense model, there's no category string, there's `expenseAccountId`.
+    // Let's get the account names for these expenses
+    const accountIds = [...new Set(expenses.map(e => e.expenseAccountId))];
+    const accounts = await this.prisma.account.findMany({
+      where: { id: { in: accountIds } },
+    });
+    const accountMap = new Map(accounts.map(a => [a.id, a.name]));
+
+    const expenseBreakdownMap = new Map<string, number>();
+    for (const exp of expenses) {
+      const cat = accountMap.get(exp.expenseAccountId) || 'Other';
+      const val = Number(exp.amount);
+      expenseBreakdownMap.set(cat, (expenseBreakdownMap.get(cat) || 0) + val);
+    }
+    const expenseBreakdown = Array.from(expenseBreakdownMap.entries()).map(([name, value]) => ({ name, value }));
+
+    // 7. Income vs Expense Trend (Last 6 Months)
+    const trend = [];
+    for (let i = 5; i >= 0; i--) {
+      const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+      const start = new Date(d.getFullYear(), d.getMonth(), 1);
+      const end = new Date(d.getFullYear(), d.getMonth() + 1, 0, 23, 59, 59);
+
+      const rev = await this.prisma.invoice.aggregate({
+        where: { companyId, issueDate: { gte: start, lte: end }, status: { not: 'CANCELLED' } },
+        _sum: { totalAmount: true },
+      });
+      const exp = await this.prisma.expense.aggregate({
+        where: { companyId, date: { gte: start, lte: end } },
+        _sum: { amount: true },
+      });
+
+      trend.push({
+        month: d.toLocaleString('default', { month: 'short' }),
+        income: Number(rev._sum.totalAmount || 0),
+        expense: Number(exp._sum.amount || 0),
+      });
+    }
+
+    return {
+      totalRevenue: Number(totalRevenue).toFixed(2),
+      totalExpenses: Number(totalExpenses).toFixed(2),
+      unpaidInvoices: unpaidInvoicesCount,
+      activeCustomers: activeCustomersCount,
+      recentInvoices: recentInvoicesFormatted,
+      expenseBreakdown,
+      trend,
+    };
+  }
+
+  // ================================================================
   // PRIVATE HELPERS
   // ================================================================
   private async validateCompany(companyId: string) {

@@ -36,6 +36,12 @@ import { StockAdjustmentsModule } from './modules/stock-adjustments/stock-adjust
 import { StockTakeModule } from './modules/stock-take/stock-take.module';
 import { PosModule } from './modules/pos/pos.module';
 import { SuperAdminModule } from './modules/super-admin/super-admin.module';
+import { QuotationsModule } from './modules/quotations/quotations.module';
+import { PurchaseOrdersModule } from './modules/purchase-orders/purchase-orders.module';
+import { TaxRatesModule } from './modules/tax-rates/tax-rates.module';
+import { VouchersModule } from './modules/vouchers/vouchers.module';
+import { CreditNotesModule } from './modules/credit-notes/credit-notes.module';
+import { DebitNotesModule } from './modules/debit-notes/debit-notes.module';
 
 @Module({
   imports: [
@@ -76,6 +82,12 @@ import { SuperAdminModule } from './modules/super-admin/super-admin.module';
     StockTakeModule,
     PosModule,
     SuperAdminModule,
+    QuotationsModule,
+    PurchaseOrdersModule,
+    TaxRatesModule,
+    VouchersModule,
+    CreditNotesModule,
+    DebitNotesModule,
   ],
   controllers: [AppController],
   providers: [AppService],
