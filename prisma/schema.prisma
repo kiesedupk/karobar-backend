@@ -56,6 +56,12 @@ model Company {
   posSessions               PosSession[]
   posHeldCarts              PosHeldCart[]
   subscriptionPayments      SubscriptionPayment[]
+  quotations                Quotation[]
+  purchaseOrders            PurchaseOrder[]
+  taxRates                  TaxRate[]
+  vouchers                  Voucher[]
+  creditNotes               CreditNote[]
+  debitNotes                DebitNote[]
 }
 
 model FiscalYear {
@@ -235,6 +241,7 @@ model Account {
   productAssets   Product[]     @relation("ProductAssetAccount")
   productExpenses Product[]     @relation("ProductExpenseAccount")
   productIncomes  Product[]     @relation("ProductIncomeAccount")
+  vouchers        Voucher[]
 
   @@unique([companyId, code])
   @@index([companyId])
@@ -287,6 +294,8 @@ model Customer {
   company           Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   invoices          Invoice[]
   recurringInvoices RecurringInvoice[]
+  quotations        Quotation[]
+  creditNotes       CreditNote[]
 
   @@index([companyId])
 }
@@ -302,8 +311,10 @@ model Vendor {
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
   expenses      Expense[]
-  purchaseBills PurchaseBill[]
-  company       Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  purchaseBills  PurchaseBill[]
+  purchaseOrders PurchaseOrder[]
+  debitNotes     DebitNote[]
+  company        Company        @relation(fields: [companyId], references: [id], onDelete: Cascade)
 
   @@index([companyId])
 }
@@ -333,6 +344,7 @@ model Invoice {
   items             InvoiceItem[]
   payments          Payment[]
   posSession        PosSession?   @relation(fields: [posSessionId], references: [id])
+  creditNotes       CreditNote[]
 
   @@unique([companyId, invoiceNumber])
   @@index([companyId])
@@ -435,6 +447,95 @@ model Expense {
   @@index([companyId])
   @@index([vendorId])
   @@index([status])
+}
+
+model Quotation {
+  id                String          @id @default(uuid())
+  companyId         String
+  customerId        String
+  quotationNumber   String
+  issueDate         DateTime
+  expiryDate        DateTime?
+  subTotal          Decimal         @default(0)
+  discountAmount    Decimal         @default(0)
+  taxAmount         Decimal         @default(0)
+  totalAmount       Decimal         @default(0)
+  status            String          @default("DRAFT") // DRAFT, SENT, ACCEPTED, REJECTED, EXPIRED
+  notes             String?
+  createdAt         DateTime        @default(now())
+  updatedAt         DateTime        @updatedAt
+  company           Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer          Customer        @relation(fields: [customerId], references: [id])
+  items             QuotationItem[]
+
+  @@unique([companyId, quotationNumber])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([status])
+}
+
+model QuotationItem {
+  id             String    @id @default(uuid())
+  quotationId    String
+  description    String
+  quantity       Decimal   @default(1)
+  unitPrice      Decimal
+  discountRate   Decimal   @default(0)
+  discountAmount Decimal   @default(0)
+  taxRate        Decimal   @default(0)
+  taxAmount      Decimal   @default(0)
+  totalAmount    Decimal
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  productId      String?
+  quotation      Quotation @relation(fields: [quotationId], references: [id], onDelete: Cascade)
+  product        Product?  @relation(fields: [productId], references: [id])
+
+  @@index([quotationId])
+  @@index([productId])
+}
+
+model PurchaseOrder {
+  id             String             @id @default(uuid())
+  companyId      String
+  vendorId       String?
+  warehouseId    String
+  orderNumber    String
+  orderDate      DateTime           @default(now())
+  expectedDate   DateTime?
+  subTotal       Decimal            @default(0)
+  taxAmount      Decimal            @default(0)
+  totalAmount    Decimal            @default(0)
+  status         String             @default("DRAFT") // DRAFT, SENT, PARTIAL, COMPLETED, CANCELLED
+  notes          String?
+  createdAt      DateTime           @default(now())
+  updatedAt      DateTime           @updatedAt
+  company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor         Vendor?            @relation(fields: [vendorId], references: [id])
+  items          PurchaseOrderItem[]
+
+  @@unique([companyId, orderNumber])
+  @@index([companyId])
+  @@index([vendorId])
+  @@index([status])
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  productId       String
+  description     String?
+  quantity        Decimal       @default(1)
+  unitCost        Decimal
+  taxRate         Decimal       @default(0)
+  taxAmount       Decimal       @default(0)
+  totalAmount     Decimal
+  createdAt       DateTime      @default(now())
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  product         Product       @relation(fields: [productId], references: [id])
+
+  @@index([purchaseOrderId])
+  @@index([productId])
 }
 
 model RecurringInvoice {
@@ -548,6 +649,10 @@ model Product {
   transferItems       WarehouseTransferItem[]
   stockAdjustments    StockAdjustment[]
   stockTakeItems      StockTakeItem[]
+  quotationItems      QuotationItem[]
+  purchaseOrderItems  PurchaseOrderItem[]
+  creditNoteItems     CreditNoteItem[]
+  debitNoteItems      DebitNoteItem[]
 
   @@unique([companyId, sku])
   @@unique([companyId, barcode])
@@ -680,6 +785,7 @@ model PurchaseBill {
   company        Company            @relation(fields: [companyId], references: [id], onDelete: Cascade)
   vendor         Vendor?            @relation(fields: [vendorId], references: [id])
   items          PurchaseBillItem[]
+  debitNotes     DebitNote[]
 
   @@unique([companyId, billNumber])
   @@index([companyId])
@@ -876,4 +982,140 @@ model Announcement {
   expiresAt DateTime?
 
   @@index([isActive])
+}
+
+// ── Phase 2 Additions (Tax Management & Vouchers) ───────────────────────────
+model TaxRate {
+  id          String   @id @default(uuid())
+  companyId   String
+  name        String
+  rate        Decimal  // e.g., 18.00
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  company     Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+
+  @@unique([companyId, name])
+  @@index([companyId])
+}
+
+model Voucher {
+  id               String   @id @default(uuid())
+  companyId        String
+  voucherNumber    String
+  type             String   // RECEIPT, PAYMENT
+  date             DateTime @default(now())
+  contactType      String?  // CUSTOMER, VENDOR
+  contactId        String?  
+  accountId        String   // Bank/Cash account receiving/paying
+  amount           Decimal
+  reference        String?
+  description      String
+  journalEntryId   String?  
+  status           String   @default("POSTED") // POSTED, CANCELLED
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  company          Company  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  account          Account  @relation(fields: [accountId], references: [id])
+
+  @@unique([companyId, voucherNumber])
+  @@index([companyId])
+  @@index([type])
+  @@index([date])
+}
+
+// ── Phase 3: Returns Management (Credit Notes / Debit Notes) ────────────────
+model CreditNote {
+  id               String           @id @default(uuid())
+  companyId        String
+  customerId       String
+  invoiceId        String?
+  creditNoteNumber String
+  issueDate        DateTime         @default(now())
+  subTotal         Decimal          @default(0)
+  taxAmount        Decimal          @default(0)
+  totalAmount      Decimal          @default(0)
+  reason           String?
+  warehouseId      String?
+  status           String           @default("DRAFT") // DRAFT, POSTED, CANCELLED
+  journalEntryId   String?
+  notes            String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  company          Company          @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  customer         Customer         @relation(fields: [customerId], references: [id])
+  invoice          Invoice?         @relation(fields: [invoiceId], references: [id])
+  items            CreditNoteItem[]
+
+  @@unique([companyId, creditNoteNumber])
+  @@index([companyId])
+  @@index([customerId])
+  @@index([invoiceId])
+  @@index([status])
+}
+
+model CreditNoteItem {
+  id             String     @id @default(uuid())
+  creditNoteId   String
+  productId      String?
+  description    String
+  quantity       Decimal    @default(1)
+  unitPrice      Decimal
+  taxRate        Decimal    @default(0)
+  taxAmount      Decimal    @default(0)
+  totalAmount    Decimal
+  createdAt      DateTime   @default(now())
+  creditNote     CreditNote @relation(fields: [creditNoteId], references: [id], onDelete: Cascade)
+  product        Product?   @relation(fields: [productId], references: [id])
+
+  @@index([creditNoteId])
+  @@index([productId])
+}
+
+model DebitNote {
+  id              String          @id @default(uuid())
+  companyId       String
+  vendorId        String
+  purchaseBillId  String?
+  debitNoteNumber String
+  issueDate       DateTime        @default(now())
+  subTotal        Decimal         @default(0)
+  taxAmount       Decimal         @default(0)
+  totalAmount     Decimal         @default(0)
+  reason          String?
+  warehouseId     String?
+  status          String          @default("DRAFT") // DRAFT, POSTED, CANCELLED
+  journalEntryId  String?
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  company         Company         @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  vendor          Vendor          @relation(fields: [vendorId], references: [id])
+  purchaseBill    PurchaseBill?   @relation(fields: [purchaseBillId], references: [id])
+  items           DebitNoteItem[]
+
+  @@unique([companyId, debitNoteNumber])
+  @@index([companyId])
+  @@index([vendorId])
+  @@index([purchaseBillId])
+  @@index([status])
+}
+
+model DebitNoteItem {
+  id            String    @id @default(uuid())
+  debitNoteId   String
+  productId     String?
+  description   String
+  quantity      Decimal   @default(1)
+  unitCost      Decimal
+  taxRate       Decimal   @default(0)
+  taxAmount     Decimal   @default(0)
+  totalAmount   Decimal
+  createdAt     DateTime  @default(now())
+  debitNote     DebitNote @relation(fields: [debitNoteId], references: [id], onDelete: Cascade)
+  product       Product?  @relation(fields: [productId], references: [id])
+
+  @@index([debitNoteId])
+  @@index([productId])
 }

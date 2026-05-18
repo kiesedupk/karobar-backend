@@ -266,4 +266,10 @@ export class ReportsController {
   ) {
     return this.reportsService.getSalesSummary(companyId, { startDate, endDate });
   }
+
+  @Permissions('report:read')
+  @Get('dashboard-summary')
+  getDashboardSummary(@Query('companyId') companyId: string) {
+    return this.reportsService.getDashboardSummary(companyId);
+  }
 }
